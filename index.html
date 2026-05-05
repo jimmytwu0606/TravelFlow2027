@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>TravelFlow | 職人級旅遊規劃</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="theme.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛰️</text></svg>">
+
+</head>
+<body class="bg-[#f8f9fa] text-slate-800 overscroll-none min-h-screen selection:bg-pink-100">
+
+    <div id="app" class="flex flex-col min-h-screen">
+        <header class="sticky top-0 z-[100] bg-white/80 backdrop-blur-xl border-b border-slate-100 px-4 py-3">
+            <div class="max-w-5xl mx-auto flex justify-between items-center">
+                <div class="flex items-center gap-2 cursor-pointer active:scale-95 transition-transform" onclick="App.navigateTo('list')">
+                    <div class="w-9 h-9 theme-bg rounded-2xl flex items-center justify-center text-white font-black italic shadow-lg shadow-pink-100">TF</div>
+                    <div class="flex flex-col">
+                        <h1 id="nav-title" class="font-black tracking-tighter text-lg uppercase leading-none">TravelFlow</h1>
+                        <span class="text-[8px] font-bold text-slate-400 tracking-widest uppercase opacity-60">Professional V2026</span>
+                    </div>
+                </div>
+                <div id="header-actions" class="flex items-center gap-3"></div>
+            </div>
+        </header>
+
+        <div id="app-message" class="hidden fixed top-24 left-1/2 -translate-x-1/2 z-[100000] pointer-events-none transition-all duration-500 bg-slate-900/90 backdrop-blur-lg text-white px-8 py-3.5 rounded-[2rem] shadow-2xl text-xs font-black tracking-widest border border-white/10 uppercase"></div>
+
+        <main id="content-container" class="flex-grow max-w-5xl mx-auto w-full p-4 pb-40">
+            <div class="flex flex-col items-center justify-center py-32 space-y-4">
+                <div class="animate-spin rounded-full h-10 w-10 border-[3px] border-slate-100 border-t-[var(--theme-primary)]"></div>
+                <p class="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">Core Initializing</p>
+            </div>
+        </main>
+
+        <div id="nav-dock-container" class="fixed bottom-0 left-0 right-0 z-[90]"></div>
+    </div>
+
+    <div id="modal-registry" class="relative z-[10001]"></div>
+
+    <div id="static-modal-container">
+        <div id="add-trip-modal" class="hidden fixed inset-0 z-[10002] flex items-center justify-center p-5">
+            <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-md animate-fade-in" onclick="App.toggleModal('add-trip-modal')"></div>
+            <div class="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl z-10 relative animate-slide-up border border-slate-50">
+                <h3 class="text-xl font-black mb-8 tracking-tighter text-center text-slate-800 uppercase italic">New Flight</h3>
+                <div class="space-y-6">
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">行程命名協定</label>
+                        <input type="text" id="new-trip-name" 
+                               class="w-full bg-slate-50 border-none rounded-[1.5rem] p-5 font-bold text-sm focus:ring-2 focus:ring-[var(--theme-primary)] focus:bg-white transition-all outline-none" 
+                               placeholder="例如：名古屋・冬之城下町">
+                    </div>
+                </div>
+                <div class="mt-10 flex gap-4">
+                    <button onclick="App.toggleModal('add-trip-modal')" class="flex-1 py-5 bg-slate-100 text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all">Cancel</button>
+                    <button onclick="App.createNewTrip()" class="flex-[2] theme-bg text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-pink-100 active:scale-95 transition-all">Establish</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+    <script>
+        // 🚀 核心 C：診斷通路導通
+        window.tf_version = "V2026.ULTRA.FINAL";
+        console.log(`%c🛰️ TravelFlow ${window.tf_version} | 路網入口導通`, "color: #fb7185; font-weight: bold;");
+    </script>
+</body>
+</html>

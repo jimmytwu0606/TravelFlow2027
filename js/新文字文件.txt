@@ -1,0 +1,173 @@
+/** 🧬 [Engine] TravelFlow English Challenge Engine (V2026.ULTRA.EN_STABLE) 
+ * 作用：針對英語學習軌道進行「語義對焦」與「拼字訓練」
+ */
+export const en_challengeEngine = {
+
+    /** 🧬 [Engine] 核心挑戰驅動器 */
+    generateChallenge(item, allItems) {
+        // 🚀 1. 物理掃描與洗滌：提取標準化燃料
+        // 💡 職人診斷：EN 軌道核心為 word (單字), phonetic (音標), trans (翻譯), pos (詞性)
+        const word = String(item.word || "").trim();
+        const phonetic = String(item.phonetic || item.reading || "").trim();
+        const trans = String(item.trans || item.translation || "").trim();
+        const example = String(item.example || "").trim();
+        const pos = String(item.pos || "").trim(); // 詞性對焦
+
+        const hasWord = word && word !== '---';
+        const hasPhonetic = phonetic && phonetic !== '---';
+        const hasTrans = trans && !['---', '無翻譯數據', '未對焦內容'].includes(trans);
+        const hasExample = example && example !== '---';
+
+        // 🚀 2. 動態導通題型池
+        // 💡 職人對焦：EN 軌道增加 'spelling' 與 'pos_match' 題型
+        const availableTypes = ['listening_en']; 
+        if (hasWord && hasTrans) {
+            availableTypes.push('meaning_en', 'spelling_en');
+        }
+        if (hasExample) {
+            availableTypes.push('usage_en');
+        }
+        if (pos) {
+            availableTypes.push('pos_match');
+        }
+
+        const activeType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+        console.log(`📡 [EN-Challenge-Ignition] 軌道偵測: ${activeType} | 活性池: ${availableTypes.join(',')}`);
+
+        let question = { type: activeType, title: '', content: '', options: [], correct: '' };
+
+        // 🚀 3. 數據噴發 (歸一化處理)
+        switch(activeType) {
+            case 'listening_en':
+                question.title = "Audio Focus: Listen and identify the word";
+                question.correct = word;
+                question.options = this._mixOptions(question.correct, allItems, 'word');
+                break;
+
+            case 'meaning_en':
+                question.title = "Meaning Focus: Choose the correct translation";
+                question.content = hasPhonetic ? `${word} [${phonetic}]` : word;
+                question.correct = trans;
+                question.options = this._mixOptions(question.correct, allItems, 'trans');
+                break;
+
+            case 'spelling_en':
+                question.title = "Spelling Focus: Select the correct spelling";
+                question.content = trans;
+                question.correct = word;
+                // 💡 策略：利用 _generateSpellingDistractors 生成形近字干擾
+                question.options = this._generateSpellingDistractors(word, allItems);
+                break;
+
+            case 'pos_match':
+                question.title = "Grammar Focus: Identify the Part of Speech";
+                question.content = word;
+                question.correct = pos;
+                // 💡 職人級固定池：詞性選項相對固定
+                const posPool = ["Noun", "Verb", "Adjective", "Adverb", "Preposition"];
+                question.options = [pos, ...posPool.filter(p => p !== pos).sort(() => 0.5 - Math.random()).slice(0, 2)];
+                break;
+
+            case 'usage_en':
+                question.title = "Context Focus: Which sentence is correct?";
+                question.content = word;
+                question.correct = example;
+                question.options = this._generateUsageDistractors(example, allItems);
+                break;
+        }
+
+        return question;
+    },
+
+    /** 🚀 混合選項與干擾項 (V2026.ULTRA.EN_CORE) */
+    _mixOptions(correct, allItems, field) {
+        const distractors = new Set();
+        const safeCorrect = String(correct || "").trim();
+        
+        // 1. 🚀 策略 1: 燃料池提取
+        const pool = allItems
+            .map(it => {
+                const val = it[field === 'trans' ? (it.translation ? 'translation' : 'trans') : field];
+                return String(val || "").trim();
+            })
+            .filter(val => val && val !== '---' && val !== safeCorrect);
+
+        let attempts = 0;
+        while (distractors.size < 2 && attempts < 15) {
+            attempts++;
+            if (pool.length > 0) {
+                const randVal = pool[Math.floor(Math.random() * pool.length)];
+                distractors.add(randVal);
+            } else {
+                // 💡 英語軌道虛擬燃料 (Ghost Fuel)
+                const enGhostFuel = ["Innovation", "Development", "Focus", "System", "Flow", "Travel", "Engine"];
+                const ghost = enGhostFuel[Math.floor(Math.random() * enGhostFuel.length)];
+                if (ghost !== safeCorrect) distractors.add(ghost);
+            }
+        }
+
+        const finalOptions = [safeCorrect, ...Array.from(distractors)].slice(0, 3);
+        return finalOptions.sort(() => Math.random() - 0.5);
+    },
+
+    /** 🚀 形近字干擾生成 (V2026.ULTRA.EN_SPECIFIC) */
+    _generateSpellingDistractors(word, allItems) {
+        const distractors = new Set();
+        
+        // 策略 A: 字母篡改 (如 double letter 或 vowel 替換)
+        if (word.length > 3) {
+            let fake = word;
+            if (word.includes('ae')) fake = word.replace('ae', 'e');
+            else if (word.includes('i')) fake = word.replace('i', 'y');
+            else if (word.includes('tion')) fake = word.replace('tion', 'shun');
+            
+            if (fake !== word) distractors.add(fake);
+        }
+
+        // 策略 B: 從池中抓取其他單字
+        const otherWords = allItems.map(it => String(it.word || "")).filter(w => w && w !== word);
+        while (distractors.size < 2 && otherWords.length > 0) {
+            const rand = otherWords[Math.floor(Math.random() * otherWords.length)];
+            distractors.add(rand);
+            if (distractors.size >= 2) break;
+        }
+
+        const finalOptions = [word, ...Array.from(distractors)].slice(0, 3);
+        // 補齊邏輯
+        while(finalOptions.length < 3) finalOptions.push("Option-" + finalOptions.length);
+        
+        return finalOptions.sort(() => Math.random() - 0.5);
+    },
+
+    /** 🚀 英語語法干擾生成 */
+    _generateUsageDistractors(sentence, allItems) {
+        const distractors = new Set();
+        
+        // 策略 A: 介系詞篡改
+        const prepositions = ['in', 'at', 'on', 'to', 'for', 'with'];
+        let fake = sentence;
+        const foundPrep = prepositions.find(p => sentence.includes(` ${p} `));
+        if (foundPrep) {
+            const otherPrep = prepositions.filter(p => p !== foundPrep)[Math.floor(Math.random() * 5)];
+            fake = sentence.replace(` ${foundPrep} `, ` ${otherPrep} `);
+            distractors.add(fake);
+        }
+
+        // 策略 B: 提取其他例句
+        const others = allItems.filter(it => it.example && it.example !== sentence).map(it => it.example);
+        let att = 0;
+        while (distractors.size < 2 && att < 10) {
+            if (others.length > 0) {
+                distractors.add(others[Math.floor(Math.random() * others.length)]);
+            } else {
+                distractors.add(sentence + "?"); // 強制篡改
+            }
+            att++;
+        }
+
+        const finalOptions = [sentence, ...Array.from(distractors)].slice(0, 3);
+        return finalOptions.sort(() => Math.random() - 0.5);
+    }
+};
+
+window.en_challengeEngine = en_challengeEngine;

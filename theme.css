@@ -1,0 +1,417 @@
+<style>
+
+/* 🛰️ TravelFlow 物理鎖定：解決 366px 溢位元兇 */
+.transport-fuel-container,
+.transport-fuel-container div,
+.seg-btn,
+.seg-btn div {
+    box-sizing: border-box !important;
+    max-width: 100% !important; /* 強制不准超過父層 */
+}
+
+
+    /* 1. 核心底層設定與色彩變數 */
+    :root {
+        --tf-text-scale: 1;      /* 🚀 軌道 A：文字燃料 */
+        --theme-primary: #fb7185; /* 預設：玫瑰粉 */
+        --theme-shadow: rgba(251, 113, 133, 0.2);
+    }
+
+    /* 🚀 物理縮放：允許 uiManager.applyUI 修改 */
+    html { 
+        font-size: 16px; 
+        transition: font-size 0.2s ease-out; 
+    }
+
+    body { 
+        font-family: 'Noto Sans TC', sans-serif; 
+        line-height: 1.6;
+        font-size: 1rem; 
+        -webkit-font-smoothing: antialiased;
+        color: #1e293b; /* 數據純化：深 slate 色提升視認性 */
+    }
+
+    /* 2. 🚀 文字視認性對焦 (文字縮放變數連動) */
+    .text-xs, .text-\[10px\], .text-\[11px\] { font-size: calc(0.75rem * var(--tf-text-scale)) !important; }
+    .text-sm, .text-\[13px\], .text-\[14px\] { font-size: calc(0.875rem * var(--tf-text-scale)) !important; }
+    .text-base { font-size: calc(1rem * var(--tf-text-scale)) !important; }
+    .text-lg { font-size: calc(1.125rem * var(--tf-text-scale)) !important; }
+    .text-xl { font-size: calc(1.25rem * var(--tf-text-scale)) !important; }
+    
+    p, span, button, input { font-size: inherit; }
+
+    /* 3. 系統主題色對焦 (核心修正：改用變數) */
+    .theme-bg { 
+        background-color: var(--theme-primary) !important; 
+        transition: background-color 0.3s ease;
+    }
+    .theme-text-pink { 
+        color: var(--theme-primary) !important; 
+        transition: color 0.3s ease;
+    }
+    
+    /* 強化陰影連動：與主題色同步 */
+    .shadow-lg.shadow-pink-100, .shadow-lg.shadow-pink-200 {
+        box-shadow: 0 10px 25px -3px var(--theme-shadow) !important;
+    }
+
+    /* 4. 佈局與模態框 (維持原有物理規格) */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    
+/* 🚀 強制導通捲動軌道 */
+#nav-scroll-track {
+    overflow-x: auto !important;
+    display: flex !important;
+    -webkit-overflow-scrolling: touch !important; /* 強制啟動 GPU 加速滑動 */
+    touch-action: pan-x !important;               /* 封殺縱向干擾 */
+}
+
+/* 🚀 修正最大化時的內容撐點 */
+#nav-carrier {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    width: max-content !important; /* 核心修正：強制寬度由內容決定 */
+    min-width: 100% !important;
+}
+
+    #content-container { padding-bottom: 160px; }
+
+    .sched-modal-container {
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .sched-modal-body {
+        flex: 1;
+        overflow-y: auto;
+        padding-right: 4px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .sched-modal-body::-webkit-scrollbar { width: 4px; }
+    .sched-modal-body::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+
+    /* 5. 動畫模組 */
+    .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* 6. 設定頁面專用：色塊圓點樣式 */
+    .theme-dot {
+        width: 2.2rem;
+        height: 2.2rem;
+        border-radius: 50%;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 2px solid transparent;
+    }
+    .theme-dot:hover { transform: scale(1.1); }
+    .theme-dot:active { transform: scale(0.95); }
+
+
+/* 解決截圖中卡片超出紅線的偏移問題 */
+.schedule-card {
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden; /* 防止內部元素溢位 */
+}
+
+.transport-fuel-container {
+    display: flex;
+    flex-direction: column;
+    width: 100% !important;
+}
+
+/* 確保所有輸入與按鈕不會因為 Padding 撐破容器 */
+.transport-fuel-container *, .schedule-card * {
+    box-sizing: border-box;
+}
+
+/* 修正底欄導航在某些解析度下的浮動偏移 */
+#bottom-dock {
+    width: 92% !important;
+    left: 4% !important;
+    transform: none !important;
+}
+
+/* 封殺所有可能導致水平位移的因子 */
+.schedule-card, 
+.transport-fuel-container, 
+.dynamic-timeline-area {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important; /* 強制切除溢位 */
+}
+
+/* 確保 Flex 子元素不會因為內容過長而撐破父級 */
+.flex-1 {
+    min-width: 0 !important;
+}
+
+/* 針對 Timeline 的 note 進行洗滌 */
+.break-words {
+    word-wrap: break-word;
+    word-break: break-all;
+    white-space: normal;
+}
+
+
+/* 🛰️ TravelFlow V2026.ULTRA 全域物理焊接 - 極簡純化版 */
+
+/* 1. 全域掃描與盒模型鎖定 */
+*, *::before, *::after {
+    box-sizing: border-box !important;
+}
+
+/* 2. 核心主視圖佈局：鎖死物理寬度 */
+.schedule-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important; 
+    position: relative !important;
+    min-width: 0 !important;
+    /* 修正：移除動畫產生的位移殘影 */
+    backface-visibility: hidden;
+    transform: translateZ(0);
+}
+
+/* 3. 交通組件軌道鎖定 */
+.transport-fuel-container, 
+.dynamic-timeline-area {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* 4. 針對 Flexbox 的深度洗滌：防止內容撐開框架 */
+.flex-1 {
+    min-width: 0 !important;
+    flex-basis: 0 !important;
+    flex-grow: 1 !important;
+}
+
+/* 5. 修正文字縮減與換行：確保不產生物理性擠壓 */
+.truncate {
+    display: block !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    min-width: 0 !important;
+}
+
+.break-words {
+    overflow-wrap: break-word !important;
+    word-break: break-all !important;
+    white-space: normal !important;
+}
+
+/* 6. 動畫優化：防止 transform 導致的像素位移 */
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+    will-change: opacity, transform;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 🚀 TravelFlow V2026.ULTRA 滾動穩定協定 */
+
+html {
+    /* 核心修正：強制預留滾動條位置，無論內容長短，佈局基準點始終一致 */
+    scrollbar-gutter: stable;
+    /* 避免不同平台滾動條寬度不一造成的計算誤差 */
+    overflow-y: scroll; 
+}
+
+/* 修正卡片在滾動條出現時的物理基準偏移 */
+.schedule-card {
+    /* 確保寬度計算不包含滾動條擠壓後的殘餘像素 */
+    width: auto !important; 
+    margin-left: 1rem !important;
+    margin-right: 1rem !important;
+    box-sizing: border-box !important;
+}
+
+/* 封殺 Flex 容器的寬度「逃逸」 */
+.transport-fuel-container {
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+}
+
+        :root {
+            --theme-primary: #fb7185;
+            --theme-primary-soft: rgba(251, 113, 133, 0.1);
+            --theme-shadow: rgba(251, 113, 133, 0.25);
+            --tf-text-scale: 1;
+            /* 物理軌道色彩定義 */
+            --rail-bus: #f97316;
+            --rail-train: #3b82f6;
+        }
+        
+        body { 
+            font-size: calc(16px * var(--tf-text-scale)); 
+            font-family: 'Noto Sans TC', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* 🚀 核心 B：渲染引擎專用特效夾 */
+        .theme-bg { background-color: var(--theme-primary); }
+        .theme-text-pink { color: var(--theme-primary); }
+        
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        
+        /* 高品質卡片進入動畫 */
+        @keyframes fuelFadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fuel { animation: fuelFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* 🚀 Ruby 物理補償 */
+.ruby-node {
+    ruby-align: center;
+    ruby-position: over;
+}
+
+.ruby-node rt {
+    font-size: 0.55em;
+    color: #94a3b8; /* slate-400 */
+    font-weight: 900;
+    margin-bottom: 0.2em; /* 物理拉開間距，防止重疊 */
+    letter-spacing: 0.05em;
+}
+
+/* 強制解除標籤模糊感 */
+.bg-slate-800 {
+    -webkit-font-smoothing: antialiased;
+    backface-visibility: hidden;
+}
+
+/* 🏮 TravelFlow Toast 物理語彙 */
+.tf-toast {
+    position: fixed;
+    bottom: 12%; /* 手機單手操作熱區 */
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.85); /* Slate-900 毛玻璃 */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 999px; /* 膠囊形 */
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 10000;
+    pointer-events: none;
+    white-space: nowrap;
+    
+    /* 進入動畫 */
+    animation: toast-in 0.4s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+.tf-toast.hiding {
+    animation: toast-out 0.3s ease forwards;
+}
+
+.tf-toast .toast-icon { font-size: 1.25rem; }
+.tf-toast .toast-msg { font-size: 0.85rem; font-weight: 700; letter-spacing: -0.02em; }
+
+@keyframes toast-in {
+    0% { opacity: 0; transform: translate(-50%, 20px) scale(0.9); }
+    100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+@keyframes toast-out {
+    100% { opacity: 0; transform: translate(-50%, 10px) scale(0.95); }
+}
+
+/* 確保 Modal 內部捲動軸視認性 */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #f1f5f9;
+    border-radius: 10px;
+}
+/* 防止內容被底部 Actions 遮擋 */
+#modal-edit-article-scroll {
+    mask-image: linear-gradient(to bottom, black 90%, transparent 100%);
+    padding-bottom: 5rem !important;
+}
+
+/* 🚀 物理主權：封殺任何形式的文字反白 */
+.theme-bg-pink.text-white, 
+#save-art-btn {
+    color: #ffffff !important;
+    opacity: 1 !important;
+    -webkit-text-fill-color: #ffffff !important;
+}
+
+/* 確保 Modal 內部編輯區有足夠的下拉空間 */
+#modal-edit-article-scroll > div {
+    padding-bottom: 40px;
+}
+
+/* 確保 Tab 軌道永遠優先顯示 */
+.art-tabs-track {
+    min-height: 44px; /* 封殺因容器崩塌導致的消失 */
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.art-tab-btn {
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* 🚀 置中 Tabs 物理特性 */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+#training-tabs-container, 
+#level-tabs-track {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory; /* 強制物理吸附 */
+    -webkit-overflow-scrolling: touch;
+}
+
+#training-tabs-container button,
+#level-tabs-track button {
+    scroll-snap-align: center; /* 元素置中對齊 */
+    flex-shrink: 0;
+}
+
+
+/* 🚀 TravelFlow Ruby 聲學排版穩壓器 */
+ruby {
+    /* 增加注音與文字的垂直距離 */
+    ruby-position: over;
+    ruby-align: center;
+}
+
+rt {
+    /* 調整注音大小與間距，封殺擠壓感 */
+    font-size: 0.55em !important;
+    transform: translateY(-2px);
+    opacity: 0.8;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+}
+
+/* 針對原文顯示區域強制拉開行距 */
+[id^="tab-content-"] {
+    line-height: 3.2 !important; /* 強制導通極致行高 */
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+</style>
