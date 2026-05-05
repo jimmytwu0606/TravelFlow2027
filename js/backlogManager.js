@@ -534,24 +534,30 @@ async addBatchRecords(items) {
 // ========================
 
 
-/** 🚀 [AI-Recon-Engine] 偵蒐指令合成器 (V2026.ULTRA 自由語義對焦版) */
+/** 🚀 [AI-Recon-Engine] 偵蒐指令合成器 (V2026.ULTRA 動態語義對焦版) */
 generateReconPrompt(params) {
     const { basePoint, style, mobility, duration } = params;
     const activeTrip = (window.state && window.state.trips) ? window.state.trips.find(t => t.id === window.state.activeTripId) : null;
     const city = activeTrip ? (activeTrip.city || "日本") : "日本";
 
-    return `【STRICT_RADAR_RECON】
+    return `【STRICT_RADAR_RECON / VERIFIED_ONLY】
 你是一位具備實境地理數據的偵蒐專家。請針對「${city} ${basePoint}」周邊進行半徑掃描。
 
 📍 偵蒐參數：
 1. 基準起點：${basePoint}
 2. 移動手段：${mobility}
 3. 預期時間：${duration}
-4. 偏好風格：${style}
+4. 偏好風格：${style} (此為嚴格閉鎖關鍵字)
+
+🎯 執行協定 (Protocol)：
+1. 交叉驗證 (Cross-Check)：必須比對 Google Maps 業者標籤。嚴禁僅憑店名通靈。
+2. 品類閉鎖 (Category Lock)：僅限提供符合「${style}」實體菜單或服務的業者。若為甜點店、咖啡廳或與風格不符者，嚴禁吸入數據包。
+3. 物理對焦 (Dynamic Radius)：請根據「${mobility}」與「${duration}」自動演算合理的物理半徑。例如：步行 15min 應鎖定約 1km 內；搭車 10min 應擴散至約 3-5km 內。
 
 🎯 輸出指令：
-請根據上述條件（特別是「${mobility}」與「${duration}」對應的物理半徑），搜尋周邊 3-5 個優質節點，直接以【靈感區 JSON 陣列】格式輸出。
-- [info] 欄位必須改寫為：「${mobility}約 ${duration} | 距離${basePoint}約 XXX m」。
+搜尋周邊 3-5 個優質節點，直接以【靈感區 JSON 陣列】格式輸出。
+- [info] 欄位格式：「${mobility}約 ${duration} | 距離${basePoint}約 XXX m」。
+- [category] 欄位：請根據業者類型精確歸類為「食/玩/購/行/住」。
 - 嚴禁 Markdown 之外的文字。
 
 【輸出範例格式】
