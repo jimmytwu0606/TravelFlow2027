@@ -150,7 +150,64 @@ showToast(icon = '💡', message = '', duration = 3000, options = {}) {
         toast.addEventListener('transitionend', finalize, { once: true });
         setTimeout(finalize, 500); 
     }, duration);
-}
+},
+
+/** 🚀 [UI-Component] 全域進度條模態框 (V2026.ULTRA 物理導通版) */
+    showProgressModal(title, subtitle = "數據磁區同步中...") {
+        // 物理洗滌：封殺重複的進度條，確保單一總線運作
+        const existing = document.getElementById('sync-progress-modal');
+        if (existing) existing.remove();
+
+        const html = `
+            <div id="sync-progress-modal" class="fixed inset-0 z-[20000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+                <div class="w-full max-w-xs bg-white rounded-[2.5rem] p-8 shadow-2xl space-y-6 text-center transform scale-100 transition-transform">
+                    <!-- 物理旋鈕：動態 Spinner -->
+                    <div class="relative w-20 h-20 mx-auto">
+                        <div class="absolute inset-0 border-4 border-slate-50 rounded-full"></div>
+                        <div id="progress-spinner" class="absolute inset-0 border-4 theme-border-pink rounded-full border-t-transparent animate-spin"></div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black theme-text-pink text-sm tabular-nums" id="sync-percent">0%</div>
+                    </div>
+                    
+                    <!-- 語義說明 -->
+                    <div>
+                        <h4 class="font-black text-slate-800 text-sm">${title}</h4>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1" id="sync-step">${subtitle}</p>
+                    </div>
+
+                    <!-- 物理進度槽位 -->
+                    <div class="w-full h-1.5 bg-slate-50 rounded-full overflow-hidden">
+                        <div id="sync-progress-bar" class="h-full theme-bg w-0 transition-all duration-300 ease-out"></div>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+    },
+
+    /** ⚡ 分段回報：更新進度指針 */
+    updateProgress(percent, stepLabel) {
+        const bar = document.getElementById('sync-progress-bar');
+        const text = document.getElementById('sync-percent');
+        const step = document.getElementById('sync-step');
+        
+        if (bar) bar.style.width = `${percent}%`;
+        if (text) text.innerText = `${Math.round(percent)}%`;
+        if (step) step.innerText = stepLabel;
+
+        // 職人反饋：在關鍵節點（如 100%）執行輕微震動
+        if (percent >= 100 && navigator.vibrate) navigator.vibrate(20);
+    },
+
+    /** 🛑 物理回收：移除進度介面 */
+    hideProgressModal() {
+        const el = document.getElementById('sync-progress-modal');
+        if (!el) return;
+        
+        el.classList.add('opacity-0', 'pointer-events-none');
+        el.querySelector('div').style.transform = 'scale(0.9)';
+        setTimeout(() => el.remove(), 400);
+    }
+
+
 };
 
 window.uiManager = uiManager;

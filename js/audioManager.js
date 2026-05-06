@@ -91,20 +91,16 @@ _sanitizeAcoustic(t) {
     if (!t) return "";
     let clean = String(t);
 
-    // 🚀 1. 優先脫殼：物理切除 Ruby 注音軌道
-    clean = clean.replace(/<rt>.*?<\/rt>/g, "");
+    clean = clean.replace(/<rt>.*?<\/rt>/g, ""); // 物理切除 Ruby
+    clean = clean.replace(/<[^>]*>/g, "");      // 移除 HTML
+    clean = clean.replace(/[\(（][ぁ-んァ-ヶー\s]+[\)）]/g, ""); // 移除括號注音
 
-    // 🚀 2. 移除所有 HTML 標籤 (純化燃料)
-    clean = clean.replace(/<[^>]*>/g, "");
+    // 🔥 [WELD-POINT] 語流導通：移除引號並封殺助詞前的空格
+    // 💡 職人診斷：這是解決「ノジマ」與「は」斷開的最小干預方案
+    clean = clean.replace(/[「」""''『』]/g, "") // 移除引號防止分詞偏移
+                 .replace(/\s+(?=[はもをにが])/g, ""); // 封殺助詞前的所有空格
 
-    // 🚀 3. 處理舊式括號注音：如「漢字(假名)」
-    clean = clean.replace(/[\(（][ぁ-んァ-ヶー\s]+[\)）]/g, "");
-
-    // ❌ [CRITICAL REMOVE] 封殺提前切除名字的邏輯
-    // 💡 職人診斷：此處嚴禁切除名字，否則 Identity Thread 將無法識字認人。
-    // clean = clean.replace(/^\s*[^：:]{1,15}[：:]\s*/g, ""); 
-
-    // 🚀 4. 終極除磁：移除 Markdown 與特殊控制字元
+    // 🚀 4. 終極除磁
     clean = clean.replace(/[*_#`]/g, "")
                  .replace(/[\u200B-\u200D\uFEFF]/g, "")
                  .trim();

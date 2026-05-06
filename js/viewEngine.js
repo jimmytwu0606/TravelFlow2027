@@ -94,20 +94,55 @@ export const viewEngine = {
     },
 
 
-/** 詳情頁導播：修正初始掛載與航班對焦邏輯 */
+/** 🧪 [Internal] 衛星軌道重組發動機：根據動態日期執行物理重排 (V2026.ULTRA 版) */
+_renderSatelliteTrack(container, trip, focusDay) {
+    if (!container) return;
+
+    // 🚀 1. 即時權重感應：判定指定日期的數據導通情況
+    const hasFlight = (trip.transport || []).some(f => Number(f.day) === Number(focusDay));
+    const hasHotel = (trip.hotels || []).some(h => h.days && h.days.includes(focusDay));
+
+    // 🏗️ 定義動態權重：有數據(10) > 無數據(0)；同分時 航班(2) > 住宿(1)
+    const priorityQueue = [
+        { id: 'transport-section', weight: hasFlight ? 12 : 2 },
+        { id: 'hotel-section', weight: hasHotel ? 11 : 1 }
+    ].sort((a, b) => b.weight - a.weight);
+
+    // 🚀 2. 物理噴發：重新接管 DOM 槽位順序
+    container.innerHTML = `
+        <div id="satellite-scroll-track" 
+             class="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory px-5 pb-3">
+            ${priorityQueue.map(slot => `
+                <div id="${slot.id}" class="flex-none w-[88vw] snap-center"></div>
+            `).join('')}
+        </div>
+        
+        <!-- 導引點同步感應 -->
+        <div class="flex justify-center gap-1.5 -mt-1 opacity-20 pointer-events-none">
+            <div class="w-1 h-1 rounded-full ${hasFlight ? 'theme-bg opacity-100' : 'bg-slate-400'}"></div>
+            <div class="w-1 h-1 rounded-full ${hasHotel ? 'theme-bg opacity-100' : 'bg-slate-400'}"></div>
+        </div>
+    `;
+
+    // 🚀 3. 數據回填：對焦最新槽位執行渲染
+    this.renderTransportCard(document.getElementById('transport-section'), trip, focusDay);
+    this.renderHotelCard(document.getElementById('hotel-section'), trip, focusDay);
+
+    // 🚀 4. 滾動強制歸位：確保視野鎖定在權重最高者
+    const track = document.getElementById('satellite-scroll-track');
+    if (track) track.scrollLeft = 0;
+},
+
+/** 詳情頁導播：主框架焊接 (已導入動態軌道槽位) */
 renderTripDetail(container, trip) {
     if (!trip) return;
 
-    // 1. 先鋪設靜態框架 (Static Framework)
-    // 注意：#transport-section 內部先留空，不要在字串拼接時呼叫 render
     container.innerHTML = `
-        <div class="animate-fade-in space-y-5">
+        <div class="animate-fade-in space-y-6">
             <div id="overview-section">${this.renderOverviewCard(trip)}</div>
 
-            <div class="grid grid-cols-2 gap-4">
-                <div id="transport-section"></div>
-                <div id="hotel-section"></div>
-            </div>
+            <!-- 🚀 核心動態槽位容器 -->
+            <div id="satellite-track-mount" class="relative -mx-5 overflow-hidden"></div>
 
             <div class="pt-2">
                 <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">Daily Roadmap</h3>
@@ -118,19 +153,12 @@ renderTripDetail(container, trip) {
         </div>
     `;
 
-    // 2. 框架掛載後，進行動態數據對焦 (Dynamic Binding)
-    // 預設對焦 D1 (focusDay = 1)
-    
-    // 🏨 住宿衛星卡渲染
-    this.renderHotelCard(document.getElementById('hotel-section'), trip, 1);
-    
-    // ✈️ 航班衛星卡渲染 (修正點：傳入正確容器與天數)
-    this.renderTransportCard(document.getElementById('transport-section'), trip, 1);
-    
-    // 📅 行程與分頁渲染
+    // 初始點火 (預設 D1)
+    this._renderSatelliteTrack(document.getElementById('satellite-track-mount'), trip, 1);
     this.renderDayTabs(document.getElementById('day-tabs-container'), trip, 0);
     this.renderDayDetailContent(document.getElementById('day-content-area'), trip, 0);
 },
+
 
 /** 🎨 視圖演進：職人級滑動底欄 (V2026.ULTRA 大字流體版) */
 renderBottomDock(container, activeView) {
@@ -342,41 +370,45 @@ _renderVisualEditorContent(item) {
                  '<span data-field="expense" contenteditable="true" spellcheck="false" onblur="window.App.syncCodeFromVisual()" $1>');
 },
 
-/** 🛍️ [Sub-Engine] 購物燃料預覽生成器 (V2026.ULTRA 索引指紋對焦版) */
+/** 🛍️ [Sub-Engine] 購物燃料預覽生成器 (V2026.ULTRA 數據洗滌版) */
 _renderShoppingFuelPreview(products) {
     let total = 0;
     const itemsHtml = products.map((p, idx) => {
-        const price = Number(p.price) || 0;
-        const qty = Number(p.quantity) || 1;
+        // 🚀 數據預處理：物理切除已汙染的重複 @ 符號，並處理數值真值
+        const cleanStore = String(p.store || '').replace(/^[@\s]+/, '').trim();
+        const price = (p.price !== undefined && p.price !== null) ? Number(String(p.price).replace(/,/g, '')) : 0;
+        const qty = (p.quantity !== undefined && p.quantity !== null && String(p.quantity).trim() !== "") ? Number(p.quantity) : 1;
+        
         total += (price * qty);
 
         return `
             <div class="shopping-fuel-box ${idx > 0 ? 'mt-6 pt-6 border-t border-slate-50' : 'mt-2'} space-y-3 animate-fade-in">
                 <div class="flex justify-between items-start">
                     <div class="flex-1 min-w-0">
-                        <!-- 🚀 注入指紋：data-field 識別欄位，data-index 識別陣列位置 -->
                         <h4 data-field="name" data-index="${idx}" 
                             class="text-[14px] font-black text-slate-800 tracking-tight leading-tight truncate outline-none" 
                             contenteditable="true" spellcheck="false" 
                             onblur="window.App.syncCodeFromVisual()">${p.name || '未命名商品'}</h4>
                         
-                        <p data-field="store" data-index="${idx}" 
-                           class="text-[10px] theme-text-pink font-bold mt-1 outline-none" 
-                           contenteditable="true" spellcheck="false" 
-                           onblur="window.App.syncCodeFromVisual()">@ ${p.store || '未指定商店'}</p>
+                        <!-- 🚀 關鍵修正：將 @ 移出 data-field 範圍，防止同步回寫時抓取裝飾符號 -->
+                        <p class="text-[10px] theme-text-pink font-bold mt-1">
+                            <span class="opacity-50">@</span> 
+                            <span data-field="store" data-index="${idx}" 
+                                  class="outline-none" 
+                                  contenteditable="true" spellcheck="false" 
+                                  onblur="window.App.syncCodeFromVisual()">${cleanStore || '未指定商店'}</span>
+                        </p>
                     </div>
                     
                     <div class="text-right shrink-0 ml-4">
                         <p class="text-[13px] font-black text-slate-700 tabular-nums">
                             ¥<span data-field="price" data-index="${idx}" 
-                                   class="outline-none"
-                                   contenteditable="true" 
+                                   class="outline-none" contenteditable="true" 
                                    onblur="window.App.syncCodeFromVisual()">${price.toLocaleString()}</span>
                         </p>
                         <p class="text-[9px] font-black text-slate-300 uppercase mt-0.5">
                             QTY: <span data-field="quantity" data-index="${idx}" 
-                                       class="outline-none"
-                                       contenteditable="true" 
+                                       class="outline-none" contenteditable="true" 
                                        onblur="window.App.syncCodeFromVisual()">${qty}</span>
                         </p>
                     </div>
@@ -1202,68 +1234,76 @@ renderOverviewCard(trip) {
     `;
 },
 
-/** ✈️ 衛星組件 A：航班縮圖卡 (雙向路網導通版) */
+/** ✈️ 衛星組件 A：航班縮圖卡 (V2026.ULTRA 航司識別版) */
 renderTransportCard(container, trip, focusDay = 1) {
     if (!container) return;
 
-    // 1. 深度洗滌：確保數據路網存在
     if (!trip) {
         container.innerHTML = "";
         return;
     }
 
-    // 2. 數據對焦：從全域 transport 陣列中濾出本日 (focusDay) 航班
     const allFlights = Array.isArray(trip.transport) ? trip.transport : [];
     const todaysFlights = allFlights.filter(f => Number(f.day) === Number(focusDay));
-
-    // 3. 實體導通：始終顯示卡片作為編輯入口
     container.classList.remove('hidden');
-
-    // 4. 數據解構：取得本日第一筆航班 (f)
     const f = todaysFlights.length > 0 ? todaysFlights[0] : null;
 
-    // 🚀 5. 渲染：將 UI 升級為雙向對位結構
+    // 🚀 數據解析：提領航司與班號數據
+    const carrier = f?.carrier || '--';
+    const code = f?.code || '--';
+
     container.innerHTML = `
         <div onclick="App.promptEditTransport('${trip.id}')" 
-             class="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm cursor-pointer hover:border-pink-100 transition-all active:scale-95 h-full animate-fade-in group">
+             class="relative bg-white p-5 rounded-[2.2rem] border border-slate-100 shadow-sm hover:shadow-md ring-1 ring-slate-100/50 cursor-pointer transition-all duration-500 active:scale-95 h-full animate-fade-in group overflow-visible">
             
-            <div class="flex justify-between items-center mb-3">
-                <div class="flex items-center gap-2">
-                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">航班路網</span>
-                    <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2 py-0.5 rounded-full italic uppercase">D${focusDay}</span>
+            <!-- 🚀 標頭區：航司、班號與日期並列導通 -->
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center gap-1.5">
+                    <!-- 日期標籤 -->
+                    <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2.5 py-1 rounded-full italic uppercase shadow-sm">D${focusDay}</span>
+                    
+                    ${f ? `
+                        <!-- 航空公司標籤 (與日期等大) -->
+                        <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2.5 py-1 rounded-full uppercase shadow-sm border border-pink-100/50">${carrier}</span>
+                        <!-- 班機編號標籤 (與日期等大) -->
+                        <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2.5 py-1 rounded-full tabular-nums shadow-sm border border-pink-100/50">${code}</span>
+                    ` : `
+                        <span class="text-[9px] font-black text-slate-300 uppercase tracking-widest ml-1">航班路網</span>
+                    `}
                 </div>
-                <span class="text-xs group-hover:rotate-12 transition-transform">✈️</span>
+                <div class="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center group-hover:bg-pink-50 transition-colors duration-500">
+                    <span class="text-xs group-hover:rotate-12 transition-transform">✈️</span>
+                </div>
             </div>
 
-            <div class="space-y-2">
+            <div class="relative w-full">
                 ${f ? `
-                    <div class="flex justify-between items-center">
-                        <div class="text-left space-y-0.5">
-                            <p class="text-[10px] font-black text-slate-700 leading-tight">${f.depPort || '--'}</p>
-                            <p class="text-[9px] theme-text-pink font-black tabular-nums">${f.depTime || '--:--'}</p>
-                            <p class="text-[7px] text-slate-300 font-bold uppercase tracking-tighter">DEP</p>
+                    <div class="flex justify-between items-center gap-2">
+                        <!-- 去程：數據對焦 -->
+                        <div class="flex flex-col items-start min-w-0 flex-[1.4]">
+                            <p class="text-[14px] font-black text-slate-800 leading-tight break-words w-full mb-1">${f.depPort || '--'}</p>
+                            <p class="text-[16px] theme-text-pink font-black tabular-nums tracking-tighter leading-none">${f.depTime || '--:--'}</p>
+                            <p class="text-[7px] text-slate-500 font-black uppercase tracking-widest mt-1">Departure</p>
                         </div>
                         
-                        <div class="flex flex-col items-center px-1 opacity-20">
-                            <span class="text-[10px] font-black">→</span>
+                        <!-- 實境符號：主題單向箭頭 -->
+                        <div class="flex flex-col items-center px-1 shrink-0 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500">
+                            <svg class="w-5 h-5 theme-text-pink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                            </svg>
                         </div>
 
-                        <div class="text-right space-y-0.5">
-                            <p class="text-[10px] font-black text-slate-700 leading-tight">${f.arrPort || '--'}</p>
-                            <p class="text-[9px] theme-text-pink font-black tabular-nums">${f.arrTime || '--:--'}</p>
-                            <p class="text-[7px] text-slate-300 font-bold uppercase tracking-tighter">ARR</p>
+                        <!-- 抵達：數據對焦 -->
+                        <div class="flex flex-col items-end min-w-0 flex-[1.4]">
+                            <p class="text-[14px] font-black text-slate-800 leading-tight break-words w-full text-right mb-1">${f.arrPort || '--'}</p>
+                            <p class="text-[16px] theme-text-pink font-black tabular-nums tracking-tighter leading-none">${f.arrTime || '--:--'}</p>
+                            <p class="text-[7px] text-slate-500 font-black uppercase tracking-widest mt-1 text-right">Arrival</p>
                         </div>
                     </div>
                 ` : `
-                    <div class="flex justify-between items-center py-1">
-                        <div class="text-left">
-                            <p class="text-[10px] font-bold text-slate-200 italic">未設定</p>
-                            <p class="text-[8px] text-slate-100 font-black uppercase tracking-tighter">No Flight</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-[10px] text-slate-200 font-black">--:--</p>
-                            <p class="text-[8px] text-slate-100 font-bold uppercase tracking-tighter">Day Transit</p>
-                        </div>
+                    <div class="flex flex-col items-center py-2 justify-center opacity-30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sector Vacuum</p>
+                        <p class="text-[8px] font-bold text-slate-300 italic mt-0.5">點擊配置數據</p>
                     </div>
                 `}
             </div>
@@ -1271,106 +1311,151 @@ renderTransportCard(container, trip, focusDay = 1) {
 },
 
 
-
-/** 🏨 衛星組件：下榻住宿 (V2.ULTRA 資訊掛載版) */
+/** 🏨 衛星組件：下榻住宿 (V2026.ULTRA 寬軌對稱版) */
 renderHotelCard(container, trip, focusDay = 1) {
-    // 🛡️ 物理層防禦
     if (!container) return;
 
-    // 🛡️ 數據層防禦
     if (!trip || !trip.id) {
-        container.innerHTML = `<div class="p-5 text-slate-300 text-[10px] italic">數據對焦中...</div>`;
+        container.innerHTML = `<div class="p-5 text-slate-300 text-[10px] font-black uppercase">Data Syncing...</div>`;
         return;
     }
 
     try {
         const hotels = trip.hotels || [];
         const todaysHotels = hotels.filter(h => h.days && h.days.includes(focusDay));
+        const h = todaysHotels.length > 0 ? todaysHotels[0] : null;
 
         container.innerHTML = `
             <div onclick="App.promptEditHotelByTripId('${trip.id}')" 
-                 class="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm cursor-pointer hover:border-pink-100 transition-all h-full animate-fade-in group">
+                 class="relative bg-white p-5 rounded-[2.2rem] border border-slate-100 shadow-sm hover:shadow-md ring-1 ring-slate-100/50 cursor-pointer transition-all duration-500 active:scale-95 h-36 flex flex-col justify-between group overflow-hidden">
                 
-                <div class="flex justify-between items-center mb-4">
+                <!-- 🚀 頂部標頭：與航班小卡 100% 視覺同步 -->
+                <div class="flex justify-between items-center mb-2">
                     <div class="flex items-center gap-2">
-                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">下榻住宿</span>
-                        <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2.5 py-1 rounded-full italic">D${focusDay}</span>
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">下榻住宿</span>
+                        <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2 py-0.5 rounded-full italic uppercase shadow-sm">D${focusDay}</span>
                     </div>
-                    <span class="text-xs group-hover:rotate-12 transition-transform">🏨</span>
+                    <div class="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center group-hover:bg-pink-50 transition-colors duration-500">
+                        <span class="text-xs group-hover:rotate-12 transition-transform">🏨</span>
+                    </div>
                 </div>
                 
-                <div class="space-y-4">
-                    ${todaysHotels.length > 0 ? todaysHotels.map(h => `
-                        <div class="pb-3 border-b border-slate-50 last:border-b-0 last:pb-0">
-                            <h5 class="text-sm font-black text-slate-800 mb-1.5 truncate">${h.name}</h5>
+                <!-- 🚀 核心數據區：執行全寬水平對焦 -->
+                <div class="relative z-10 w-full mb-1">
+                    ${h ? `
+                        <div class="flex flex-col gap-2">
+                            <!-- 飯店名稱：提升權重，支援兩行溢出 -->
+                            <h5 class="text-[15px] font-black text-slate-800 leading-tight pr-4 line-clamp-1">${h.name}</h5>
                             
-                            <div class="space-y-1">
-                                ${h.address ? `
-                                    <div class="flex items-start gap-1.5 text-slate-400">
-                                        <span class="text-[10px] mt-0.5">📍</span>
-                                        <p class="text-[10px] leading-relaxed font-medium line-clamp-2">${h.address}</p>
-                                    </div>
-                                ` : ''}
+                            <!-- 資訊導軌：地址與電話水平對焦，利用寬軌優勢完整顯示 -->
+                            <div class="flex items-center gap-4 border-t border-slate-50 pt-3">
+                                <div class="flex items-center gap-2 flex-1 min-w-0">
+                                    <span class="text-[12px] shrink-0">📍</span>
+                                    <p class="text-[11px] font-bold text-slate-500 leading-none truncate">${h.address || '未設定地址'}</p>
+                                </div>
                                 
-                                ${h.phone ? `
-                                    <div class="flex items-center gap-1.5 text-slate-400">
-                                        <span class="text-[10px]">📞</span>
-                                        <p class="text-[10px] leading-relaxed font-medium">${h.phone}</p>
-                                    </div>
-                                ` : ''}
+                                <div class="h-4 w-px bg-slate-100 shrink-0"></div>
+
+                                <div class="flex items-center gap-2 shrink-0 pr-2">
+                                    <span class="text-[12px] shrink-0">📞</span>
+                                    <p class="text-[11px] font-black text-slate-500 tabular-nums leading-none tracking-tighter">${h.phone || '--'}</p>
+                                </div>
                             </div>
                         </div>
-                    `).join('') : `
-                        <div class="py-4 text-center">
-                            <p class="text-[10px] text-slate-300 italic font-black uppercase tracking-tighter">本日未設定住宿</p>
+                    ` : `
+                        <div class="flex flex-col items-center py-2 justify-center opacity-30">
+                            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Hotel Sector Vacuum</p>
+                            <p class="text-[8px] font-bold text-slate-300 italic mt-0.5">點擊焊接住宿燃料</p>
                         </div>
                     `}
                 </div>
+
+                <!-- 背景裝飾：與航班卡一致的極簡浮水印 -->
+                <div class="absolute -right-2 -bottom-2 text-4xl opacity-[0.02] font-black italic select-none pointer-events-none uppercase">STAY</div>
             </div>`;
     } catch (err) {
         console.error("❌ [ViewEngine-Collapse] 旅館卡渲染失敗:", err);
-        container.innerHTML = `<div class="p-5 text-red-300 text-[10px]">渲染異常</div>`;
+        container.innerHTML = `<div class="p-5 bg-rose-50 text-rose-500 rounded-2xl text-[10px] font-black">數據導通異常</div>`;
     }
 },
 
 
-/** 🛫 編輯班機與核心參數 */
-    promptEditOverview(tripId) {
-        const trip = state.trips.find(t => t.id === tripId);
-        if (!trip) return;
+/** 🛫 編輯班機與核心參數 (V2026.ULTRA 數據軌道擴充版) */
+promptEditOverview(tripId) {
+    const trip = state.trips.find(t => t.id === tripId);
+    if (!trip) return;
 
-        const content = `
-            <div class="space-y-6 max-h-[60vh] overflow-y-auto px-1 no-scrollbar text-left">
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="col-span-2">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">目的地區域</label>
-                        <input type="text" id="edit-city" value="${trip.city || ''}" class="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold text-sm">
-                    </div>
-                </div>
-                
-                <div class="bg-slate-50/50 p-4 rounded-[2rem] space-y-3">
-                    <p class="text-[9px] font-black theme-text-pink uppercase tracking-widest">去程航班 Departure</p>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="text" id="flight-dep-port" placeholder="機場/班機號" value="${trip.transport?.departure?.airport || ''}" class="bg-white rounded-xl p-3 text-xs font-bold border-none">
-                        <input type="time" id="flight-dep-time" value="${trip.transport?.departure?.time || ''}" class="bg-white rounded-xl p-3 text-xs font-bold border-none">
-                    </div>
-                </div>
+    // 🚀 數據預洗：提領現有航網指紋，確保 Edit 模式導通
+    const dep = trip.transport?.departure || {};
+    const ret = trip.transport?.return || {};
 
-                <div class="bg-slate-50/50 p-4 rounded-[2rem] space-y-3">
-                    <p class="text-[9px] font-black theme-text-pink uppercase tracking-widest">回程航班 Return</p>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="text" id="flight-ret-port" placeholder="機場/班機號" value="${trip.transport?.return?.airport || ''}" class="bg-white rounded-xl p-3 text-xs font-bold border-none">
-                        <input type="time" id="flight-ret-time" value="${trip.transport?.return?.time || ''}" class="bg-white rounded-xl p-3 text-xs font-bold border-none">
-                    </div>
-                </div>
-            </div>`;
+    const content = `
+        <div class="space-y-6 max-h-[60vh] overflow-y-auto px-1 no-scrollbar text-left">
+            <!-- 📍 區域對焦 -->
+            <div class="space-y-2">
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">目的地區域</label>
+                <input type="text" id="edit-city" value="${trip.city || ''}" 
+                       class="w-full bg-slate-50 border-none rounded-2xl p-4 font-black text-sm outline-none focus:ring-2 focus:ring-pink-100 transition-all shadow-inner">
+            </div>
             
-        const actions = `
-            <button onclick="App.modalRemove('edit-overview-modal')" class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs">取消</button>
-            <button onclick="App.saveTransportData('${tripId}')" class="flex-[2] py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg">更新數據</button>`;
-        
-        this.modalCreate('edit-overview-modal', '🔧 航網數據設定', content, actions);
-    },
+            <!-- 🛫 去程航班 (Departure) -->
+            <div class="bg-slate-50/50 p-5 rounded-[2rem] space-y-4 border border-slate-100/50">
+                <p class="text-[9px] font-black theme-text-pink uppercase tracking-widest flex items-center gap-2">
+                    <span class="text-xs">🛫</span> 去程航班 Departure
+                </p>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="space-y-1.5">
+                        <label class="text-[8px] font-black text-slate-300 uppercase px-1">航空公司</label>
+                        <input type="text" id="flight-dep-carrier" placeholder="如：長榮航空" value="${dep.carrier || ''}" class="w-full bg-white rounded-xl p-3 text-xs font-bold border-none shadow-sm outline-none focus:ring-1 focus:ring-pink-200">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="text-[8px] font-black text-slate-300 uppercase px-1">班機號碼</label>
+                        <input type="text" id="flight-dep-code" placeholder="如：BR111" value="${dep.code || ''}" class="w-full bg-white rounded-xl p-3 text-xs font-bold border-none shadow-sm outline-none focus:ring-1 focus:ring-pink-200">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="text-[8px] font-black text-slate-300 uppercase px-1">起飛機場</label>
+                        <input type="text" id="flight-dep-port" placeholder="如：TPE" value="${dep.airport || ''}" class="w-full bg-white rounded-xl p-3 text-xs font-bold border-none shadow-sm outline-none focus:ring-1 focus:ring-pink-200">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="text-[8px] font-black text-slate-300 uppercase px-1">時間</label>
+                        <input type="time" id="flight-dep-time" value="${dep.time || ''}" class="w-full bg-white rounded-xl p-3 text-xs font-bold border-none shadow-sm outline-none focus:ring-1 focus:ring-pink-200">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🛬 回程航班 (Return) -->
+            <div class="bg-slate-50/50 p-5 rounded-[2rem] space-y-4 border border-slate-100/50">
+                <p class="text-[9px] font-black theme-text-pink uppercase tracking-widest flex items-center gap-2">
+                    <span class="text-xs">🛬</span> 回程航班 Return
+                </p>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="space-y-1.5">
+                        <label class="text-[8px] font-black text-slate-300 uppercase px-1">航空公司</label>
+                        <input type="text" id="flight-ret-carrier" placeholder="如：長榮航空" value="${ret.carrier || ''}" class="w-full bg-white rounded-xl p-3 text-xs font-bold border-none shadow-sm outline-none focus:ring-1 focus:ring-pink-200">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="text-[8px] font-black text-slate-300 uppercase px-1">班機號碼</label>
+                        <input type="text" id="flight-ret-code" placeholder="如：BR111" value="${ret.code || ''}" class="w-full bg-white rounded-xl p-3 text-xs font-bold border-none shadow-sm outline-none focus:ring-1 focus:ring-pink-200">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="text-[8px] font-black text-slate-300 uppercase px-1">起飛機場</label>
+                        <input type="text" id="flight-ret-port" placeholder="如：KIX" value="${ret.airport || ''}" class="w-full bg-white rounded-xl p-3 text-xs font-bold border-none shadow-sm outline-none focus:ring-1 focus:ring-pink-200">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="text-[8px] font-black text-slate-300 uppercase px-1">時間</label>
+                        <input type="time" id="flight-ret-time" value="${ret.time || ''}" class="w-full bg-white rounded-xl p-3 text-xs font-bold border-none shadow-sm outline-none focus:ring-1 focus:ring-pink-200">
+                    </div>
+                </div>
+            </div>
+        </div>`;
+            
+    const actions = `
+        <button onclick="App.modalRemove('edit-overview-modal')" class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">取消</button>
+        <button onclick="App.saveTransportData('${tripId}')" class="flex-[2] py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">更新航網數據</button>`;
+    
+    this.modalCreate('edit-overview-modal', '🔧 航網數據設定', content, actions);
+},
+
 
     // 3. 行程框組件 (D1...Dn 獨立生成器)
     renderDayTrack(container, trip) {
@@ -3085,13 +3170,20 @@ renderAICopyBtn(prompt) {
 },
 
 
-/** 🎨 視覺演進：行程/購物複合燃料渲染器 (V2026.ULTRA 語法加固導通版) */
+/** 🎨 視覺演進：行程/購物複合燃料渲染器 (V2026.ULTRA 物理加固導通版) */
 renderItineraryFuel(jsonStr) {
     if (!jsonStr || jsonStr.trim() === "") return `<div class="p-6 text-slate-400 italic text-xs">等待燃料注入...</div>`;
 
     try {
-        // 🚀 1. 數據物理洗滌：封殺多行斷路風險，確保 JSON 解析路徑純淨
-        const sanitized = jsonStr.replace(/```json/g, '').replace(/```/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+        // 🚀 1. 數據物理洗滌：封鎖多行斷路、隱形字元，並強制修復「空欄位」語法錯誤
+        const sanitized = jsonStr
+            .replace(/```json/g, '')
+            .replace(/```/g, '')
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            // ⚡ 核心熔斷補丁：捕捉冒號後直接接逗號或右括號的殘缺處 (如 "quantity":,)，強制補回 1 確保導通
+            .replace(/:\s*(?=[,}])/g, ': 1') 
+            .trim();
+            
         const data = JSON.parse(sanitized);
         const rawItems = (data && data.stops && Array.isArray(data.stops)) ? data.stops : (Array.isArray(data) ? data : [data]);
 
@@ -3189,7 +3281,8 @@ renderItineraryFuel(jsonStr) {
 
     } catch (err) {
         console.error("❌ [Fuel-Render-Collapse]:", err);
-        return `<div class="p-4 bg-rose-50 text-rose-500 rounded-2xl text-xs">數據路網對焦異常</div>`;
+        // 遵循專業語境：數據路網對焦異常回饋
+        return `<div class="p-4 bg-rose-50 text-rose-500 rounded-2xl text-xs font-bold">數據路網對焦異常，請重新嘗試</div>`;
     }
 },
 
@@ -3924,41 +4017,41 @@ _renderImportActions() {
 },
 
 
-/** 📡 [Sub-Component] 渲染 AI 戰略偵蒐表單 (V2026.ULTRA 名稱保真版) */
+/** 📡 [Sub-Component] 渲染 AI 戰略偵蒐表單 (V2026.ULTRA 視覺權重校準版) */
 _renderReconForm() {
-    // 💡 職人診斷：起始基準點強制清空 (Value="")。避免 AI 以大範圍城市名稱產生語義噪訊。
+    // 💡 職人診斷：調整標籤與輸入內容的明度比，封殺視覺雜訊。
     return `
     <div class="space-y-6 text-left animate-fade-in pb-4">
         <div class="grid grid-cols-2 gap-4 px-1">
-            <!-- 1. 起始基準點 (全寬 + 物理清空) -->
+            <!-- 1. 起始基準點 (全寬 + 標籤增益 + 內容降壓) -->
             <div class="col-span-2 space-y-2">
-                <label class="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">1. 起始基準點</label>
+                <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">1. 起始基準點</label>
                 <input type="text" id="recon-base" 
                        placeholder="例如：新風館 / 京都車站 / 烏丸御池站 6 號出口" 
                        value=""
-                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-black text-sm shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all theme-text-pink">
-                <p class="text-[11px] text-slate-400 px-1 italic">※ 請輸入具體地標，以利執行精確半徑計算</p>
+                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-medium text-sm text-slate-400 shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all">
+                <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">※ 請輸入具體地標，以利執行精確半徑計算</p>
             </div>
 
             <!-- 2. 交通手段 -->
             <div class="space-y-2">
-                <label class="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">2. 交通手段</label>
+                <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">2. 交通手段</label>
                 <input type="text" id="recon-mobility" placeholder="例如：步行 / 公車" 
-                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-black text-sm shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all text-slate-700">
+                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-medium text-sm text-slate-400 shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all">
             </div>
 
             <!-- 3. 預期時間 -->
             <div class="space-y-2">
-                <label class="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">3. 預期時間</label>
+                <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">3. 預期時間</label>
                 <input type="text" id="recon-duration" placeholder="例如：10 分鐘" 
-                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-black text-sm shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all text-slate-700">
+                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-medium text-sm text-slate-400 shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all">
             </div>
 
             <!-- 4. 偵蒐風格 (全寬) -->
             <div class="col-span-2 space-y-2">
-                <label class="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">4. 搜尋風格與偏好</label>
+                <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">4. 搜尋風格與偏好</label>
                 <input type="text" id="recon-style" placeholder="例如：隱藏版甜點 / 職人咖啡" 
-                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-black text-sm shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all text-slate-700">
+                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-medium text-sm text-slate-400 shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all">
             </div>
         </div>
 
@@ -3970,11 +4063,11 @@ _renderReconForm() {
             </button>
         </div>
 
-        <!-- 5. 燃料注入區 (配色校準：淺灰背脊導通) -->
+        <!-- 5. 燃料注入區 (字體對齊細體淺灰) -->
         <div class="space-y-2 px-1">
-            <label class="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">5. 注入 AI 回應燃料 (JSON)</label>
+            <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">5. 注入 AI 回應燃料 (JSON)</label>
             <textarea id="recon-json-input" 
-                      class="w-full h-40 bg-slate-50/80 border-none rounded-[1.5rem] p-5 text-[11px] font-mono text-slate-700 outline-none shadow-inner custom-scrollbar focus:ring-2 focus:ring-pink-100 transition-all" 
+                      class="w-full h-40 bg-slate-50/80 border-none rounded-[1.5rem] p-5 text-[11px] font-mono font-medium text-slate-400 outline-none shadow-inner custom-scrollbar focus:ring-2 focus:ring-pink-100 transition-all" 
                       placeholder="在此貼上 AI 回傳的 JSON 陣列..."></textarea>
         </div>
     </div>`;

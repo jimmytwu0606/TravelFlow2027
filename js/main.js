@@ -362,23 +362,29 @@ case 'training':
     },
 
 
-/** 📑 切換日期標籤：啟動全域數據同步與物理對焦 (V2026.ULTRA 職人手感版) */
+/** 📑 切換日期標籤：執行全域數據同步與物理重排 (V2026.ULTRA 權重對焦版) */
 switchDay(tripId, dayIndex) {
     // 1. 數據提取與狀態更新
     const trip = state.trips.find(t => t.id === tripId);
     if (!trip) return console.error("❌ [State-Error] 找不到對應行程燃料");
 
-    // 🚀 核心焊接：物理鎖定活躍行程 ID，確保各分流模組讀取正確指針
+    // 🚀 核心焊接：鎖定活躍行程
     state.activeTripId = tripId; 
     const dayNum = dayIndex + 1;
 
-    // 2. 視圖導播：更新 Tabs 視覺狀態
+    // 🚀 2. 衛星軌道重連：執行物理重排發動機
+    // 💡 職人診斷：不再單獨呼叫 Hotel/Transport，而是由中樞統一根據數據有無進行排序
+    const trackMount = document.getElementById('satellite-track-mount');
+    if (trackMount && typeof viewEngine._renderSatelliteTrack === 'function') {
+        viewEngine._renderSatelliteTrack(trackMount, trip, dayNum);
+    }
+
+    // 3. 視圖導播：更新 Tabs 視覺狀態
     const tabsContainer = document.getElementById('day-tabs-container');
     if (tabsContainer) {
-        // A. 執行實體渲染
         viewEngine.renderDayTabs(tabsContainer, trip, dayIndex);
 
-        // 🚀 B. 物理對焦：確保選中的 Day Tab 捲動至中央
+        // 物理對焦：確保選中的 Day Tab 捲動至中央
         requestAnimationFrame(() => {
             const activeTabBtn = tabsContainer.querySelector('.theme-bg');
             if (activeTabBtn) {
@@ -386,21 +392,10 @@ switchDay(tripId, dayIndex) {
                 target.scrollIntoView({
                     behavior: 'smooth',
                     block: 'nearest',
-                    inline: 'center' // 強制水平置中協定
+                    inline: 'center'
                 });
             }
         });
-    }
-
-    // 🚀 3. 衛星小卡聯動：同步更新「住宿」與「航班」
-    const hotelSection = document.getElementById('hotel-section');
-    if (hotelSection) {
-        viewEngine.renderHotelCard(hotelSection, trip, dayNum);
-    }
-
-    const transportSection = document.getElementById('transport-section');
-    if (transportSection) {
-        viewEngine.renderTransportCard(transportSection, trip, dayNum);
     }
 
     // 4. 下方詳細規劃區聯動
@@ -409,15 +404,13 @@ switchDay(tripId, dayIndex) {
         viewEngine.renderDayDetailContent(contentArea, trip, dayIndex);
     }
 
-    // 🚀 5. 職人級反饋：以「物理觸感」取代「視覺提示」
-    // 封殺原本干擾視覺的 showToast，改用 Haptic 指令
+    // 🚀 5. 職人級反饋：物理觸感
     if (navigator.vibrate) {
-        navigator.vibrate(8); // 極短促震動，模擬物理撥盤感
+        navigator.vibrate(8); 
     }
     
-    console.log(`📡 [Switch-Done] Day ${dayNum} 物理位移與數據對焦完畢`);
+    console.log(`📡 [Switch-Done] Day ${dayNum} 權重重排與數據對焦完畢`);
 },
-
 
     toggleModal(id) {
         const el = document.getElementById(id);
@@ -3130,10 +3123,11 @@ promptEditTransport(tripId) {
 },
 
 
-/** 🏗️ 燃料組件：生成雙向起降輸入列 (保留原有 Dn 選擇功能) */
+/** 🏗️ 燃料組件：生成雙向起降輸入列 (V2026.ULTRA 航司欄位補完版) */
 generateFlightRowHTML(trip, index, data = null) {
     return `
-        <div class="flight-row p-6 bg-slate-50 rounded-[2.5rem] space-y-4 border-2 border-transparent hover:border-pink-100 transition-all shadow-sm" data-index="${index}">
+        <div class="flight-row p-6 bg-slate-50 rounded-[2.5rem] space-y-4 border-2 border-transparent hover:border-pink-100 transition-all shadow-sm group" data-index="${index}">
+            <!-- 標頭：航段編號與顯示天數 -->
             <div class="flex justify-between items-center mb-1">
                 <div class="flex items-center gap-2">
                     <span class="text-[10px] font-black theme-text-pink bg-pink-50 px-3 py-1 rounded-full italic">航段 ${index + 1}</span>
@@ -3143,22 +3137,43 @@ generateFlightRowHTML(trip, index, data = null) {
                         `).join('')}
                     </select>
                 </div>
-                <button onclick="this.closest('.flight-row').remove()" class="text-slate-300 hover:text-red-400 p-2 transition-colors">✕</button>
+                <button onclick="this.closest('.flight-row').remove()" class="text-slate-300 hover:text-rose-500 p-2 transition-colors active:scale-90">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
             </div>
             
-            <div class="grid grid-cols-2 gap-3">
-                <div class="space-y-1.5 text-left">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-tighter px-1">🛫 起飛</label>
-                    <input type="text" class="flight-dep-port w-full bg-white rounded-2xl p-3 text-xs font-bold border-none outline-none shadow-inner" 
-                           placeholder="機場/班機" value="${data?.depPort || ''}">
-                    <input type="time" class="flight-dep-time w-full bg-white rounded-xl p-2 text-[10px] font-bold border-none outline-none mt-1" 
+            <!-- 🚀 核心新增：航空公司與班號輸入區 (頂層對位) -->
+            <div class="grid grid-cols-2 gap-3 mb-2 animate-fade-in">
+                <div class="space-y-1.5">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 flex items-center gap-1">
+                        航空公司
+                    </label>
+                    <input type="text" class="flight-dep-carrier w-full bg-white rounded-xl p-3 text-[11px] font-black text-slate-700 border-none outline-none shadow-sm ring-1 ring-slate-100 focus:ring-pink-100 transition-all" 
+                           placeholder="例如：長榮航空" value="${data?.carrier || ''}">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 flex items-center gap-1">
+                        班機號碼
+                    </label>
+                    <input type="text" class="flight-dep-code w-full bg-white rounded-xl p-3 text-[11px] font-black text-slate-700 border-none outline-none shadow-sm ring-1 ring-slate-100 focus:ring-pink-100 transition-all" 
+                           placeholder="例如：BR111" value="${data?.code || ''}">
+                </div>
+            </div>
+
+            <!-- 機場與時間配置區 -->
+            <div class="grid grid-cols-2 gap-3 pt-4 border-t border-slate-200/50">
+                <div class="space-y-2 text-left">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-tighter px-1 flex items-center gap-1">🛫 起飛機場</label>
+                    <input type="text" class="flight-dep-port w-full bg-white rounded-2xl p-3 text-xs font-bold border-none outline-none shadow-inner ring-1 ring-slate-50 focus:ring-pink-100" 
+                           placeholder="機場 (如：TPE)" value="${data?.depPort || ''}">
+                    <input type="time" class="flight-dep-time w-full bg-white rounded-xl p-2.5 text-[11px] font-black text-slate-600 border-none outline-none mt-1 shadow-sm ring-1 ring-slate-50" 
                            value="${data?.depTime || ''}">
                 </div>
-                <div class="space-y-1.5 text-left">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-tighter px-1">🛬 降落</label>
-                    <input type="text" class="flight-arr-port w-full bg-white rounded-2xl p-3 text-xs font-bold border-none outline-none shadow-inner" 
-                           placeholder="機場/班機" value="${data?.arrPort || ''}">
-                    <input type="time" class="flight-arr-time w-full bg-white rounded-xl p-2 text-[10px] font-bold border-none outline-none mt-1" 
+                <div class="space-y-2 text-left">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-tighter px-1 flex items-center gap-1">🛬 降落機場</label>
+                    <input type="text" class="flight-arr-port w-full bg-white rounded-2xl p-3 text-xs font-bold border-none outline-none shadow-inner ring-1 ring-slate-50 focus:ring-pink-100" 
+                           placeholder="機場 (如：KIX)" value="${data?.arrPort || ''}">
+                    <input type="time" class="flight-arr-time w-full bg-white rounded-xl p-2.5 text-[11px] font-black text-slate-600 border-none outline-none mt-1 shadow-sm ring-1 ring-slate-50" 
                            value="${data?.arrTime || ''}">
                 </div>
             </div>
@@ -3211,7 +3226,7 @@ addFlightRow(tripId) {
 
 
 
-/** 💾 數據固化：採集雙向航班路徑 (對位 DEP/ARR 結構) */
+/** 💾 數據固化：採集雙向航班路徑 (V2026.ULTRA 航司指紋加固版) */
 async saveMultiTransportData(tripId) {
     const tripIndex = state.trips.findIndex(t => t.id === tripId);
     if (tripIndex === -1) return;
@@ -3220,18 +3235,26 @@ async saveMultiTransportData(tripId) {
     const rows = document.querySelectorAll('.flight-row');
     const updatedTransport = [];
 
-    // 🚀 2. 數據對焦採集
+    // 🚀 2. 數據對焦採集：補齊航空公司與班號指針
     rows.forEach(row => {
-        // 抓取新版雙軌 ID，若抓不到會回傳 null，我們用 ?. 確保不崩潰
+        // 🚀 核心焊接：擷取新版動態 Input ID
+        const depCarrier = row.querySelector('.flight-dep-carrier')?.value.trim() || "";
+        const depCode = row.querySelector('.flight-dep-code')?.value.trim() || "";
         const depPort = row.querySelector('.flight-dep-port')?.value.trim() || "";
         const depTime = row.querySelector('.flight-dep-time')?.value || "";
+
+        const retCarrier = row.querySelector('.flight-ret-carrier')?.value.trim() || "";
+        const retCode = row.querySelector('.flight-ret-code')?.value.trim() || "";
         const arrPort = row.querySelector('.flight-arr-port')?.value.trim() || "";
         const arrTime = row.querySelector('.flight-arr-time')?.value || "";
+        
         const day = parseInt(row.querySelector('.flight-day')?.value || 1);
 
-        // 🛡️ 只要有填寫起飛或降落機場，就視為有效燃料
-        if (depPort || arrPort) {
+        // 🛡️ 只要有填寫起飛、降落機場或航空公司，就視為有效燃料
+        if (depPort || arrPort || depCarrier) {
             updatedTransport.push({
+                carrier: depCarrier || retCarrier, // 🚀 航司主權合併
+                code: depCode || retCode,       // 🚀 班號主權合併
                 depPort, // 起飛機場
                 depTime, // 起飛時間
                 arrPort, // 降落機場
@@ -3242,34 +3265,39 @@ async saveMultiTransportData(tripId) {
     });
 
     try {
-        // 3. 數據寫入 state
+        // 3. 數據狀態更新與物理指紋對齊
+        const nowTs = Date.now();
         state.trips[tripIndex].transport = updatedTransport;
+        state.trips[tripIndex].updatedAt = nowTs;
+        state.lastLocalEdit = nowTs;
+        localStorage.setItem('tf_last_local_edit', nowTs);
 
         // 4. 固化至磁區
         await dbManager.save(state.trips[tripIndex]);
         
-        // 5. 介面導通
+        // 5. 介面導通與熱重連
         this.modalRemove('edit-transport-modal');
         
-        // 重新回到詳情頁，觸發 renderTransportCard 重新掃描新格式數據
+        // 重新回到詳情頁，觸發渲染引擎掃描新數據
         this.navigateTo('detail', tripId);
         
-        uiManager.showToast("✈️ 航班資訊已同步");
+        uiManager.showToast("✈️", "航班路網與航司數據已同步");
+        if (navigator.vibrate) navigator.vibrate(15);
+
     } catch (err) {
         console.error("❌ [Transport-Save-Fail] 航班設定異常:", err);
-        uiManager.showToast("數據路網對焦異常，請重新嘗試");
+        uiManager.showToast("⚠️", "數據路網對焦異常，請重新嘗試");
     }
 },
 
 
-/** 💾 數據固化：航班與概覽數據合併 (多路徑自適應版) */
+/** 💾 數據固化：航班與概覽數據合併 (V2026.ULTRA 航司識別版) */
 async saveTransportData(tripId) {
     const tripIndex = state.trips.findIndex(t => t.id === tripId);
     if (tripIndex === -1) return;
 
-    // 🚀 1. 物理探測：判斷目前開啟的是哪一個 Modal (Overview 還是 Transport)
-    // 優先嘗試舊版/概覽 ID，若無則對位新版 ID
-    const getVal = (id) => document.getElementById(id)?.value || "";
+    // 🚀 1. 物理探測工具：封殺 DOM 缺失導致的空值
+    const getVal = (id) => document.getElementById(id)?.value.trim() || "";
 
     // 取得概覽中的城市數據 (若有)
     const cityInput = document.getElementById('edit-city');
@@ -3277,49 +3305,63 @@ async saveTransportData(tripId) {
         state.trips[tripIndex].city = cityInput.value.trim();
     }
 
-    // 🚀 2. 數據採集分流：封殺 DOM 找不到導致的空值
-    // 第一組 ID 集 (flight-dep-port 系列)
+    // 🚀 2. 數據採集分流：補齊 carrier (航司) 與 code (班號) 軌道
+    // 💡 職人診斷：同時兼容 Overview 模式與擴充後的數據 ID
+    const depCarrier = getVal('flight-dep-carrier');
+    const depCode = getVal('flight-dep-code');
     const depAirport = getVal('flight-dep-port') || getVal('edit-dep-port');
     const depTime = getVal('flight-dep-time') || getVal('edit-dep-time');
+
+    const retCarrier = getVal('flight-ret-carrier');
+    const retCode = getVal('flight-ret-code');
     const retAirport = getVal('flight-ret-port') || getVal('edit-ret-port');
     const retTime = getVal('flight-ret-time') || getVal('edit-ret-time');
     
-    // 取得日期數據 (僅部分彈窗具備)
     const depDate = getVal('edit-dep-date');
     const retDate = getVal('edit-ret-date');
 
-    // 🚀 3. 燃料焊接：同步至 State
+    // 🚀 3. 燃料焊接：同步至 State (確保結構完整對焦 renderTransportCard)
     state.trips[tripIndex].transport = {
         departure: {
+            carrier: depCarrier,  // 航空公司指紋
+            code: depCode,        // 班機編號指紋
             airport: depAirport,
             time: depTime,
-            date: depDate // 保留擴充性
+            date: depDate
         },
         return: {
+            carrier: retCarrier,  // 航空公司指紋
+            code: retCode,        // 班機編號指紋
             airport: retAirport,
             time: retTime,
-            date: retDate // 保留擴充性
+            date: retDate
         }
     };
 
     try {
-        // 🚀 4. 固化至磁區
+        // 🚀 4. 物理指紋同步與磁區固化
+        const nowTs = Date.now();
+        state.lastLocalEdit = nowTs;
+        localStorage.setItem('tf_last_local_edit', nowTs);
+        state.trips[tripIndex].updatedAt = nowTs;
+
         await dbManager.save(state.trips[tripIndex]);
         
-        // 🚀 5. 物理關閉所有可能存在的 Modal
+        // 🚀 5. 物理回收與熱重連
         this.modalRemove('edit-overview-modal');
         this.modalRemove('edit-transport-modal');
         
-        // 🚀 6. 視圖同步
         this.navigateTo('detail', tripId);
-        uiManager.showToast("✈️ 航班與概覽數據已同步");
+        uiManager.showToast("✈️", "航網數據與航空公司配置已固化");
         
+        if (navigator.vibrate) navigator.vibrate(10);
+        console.log(`📡 [Transport-Weld] Trip ${tripId} 航班主權已更新`);
+
     } catch (err) {
         console.error("❌ [Merge-Save-Fail]:", err);
-        uiManager.showToast("數據固化異常");
+        uiManager.showToast("⚠️", "磁區固化異常，路網斷路");
     }
 },
-
 
 
 /** 🗑️ 數據移除：清除特定天數的航班配置 (V2026.ULTRA 物理對焦版) */
@@ -4999,94 +5041,123 @@ async triggerDriveBackup() {
 },
 
 
-/** 🔄 [App] 雲端真值回流對焦 (V2026.ULTRA 全磁區自癒版) */
+/** 🔄 [App] 雲端真值回流對焦 (V2026.ULTRA 強力熔斷版) */
 async syncFromCloud(silent = false) {
-    // 🛡️ 1. 物理攔截器
+    // 🛡️ 1. 物理攔截器：身份與路網主權預檢
     if (!state.userId || state.userId === 'guest_sector') {
         if (!silent) uiManager.showToast('🔒', '請先登入以提領雲端存檔');
         return false;
     }
 
-    console.log("🔄 [App] 啟動全境磁區回流與數據降落程序...");
-    if (!silent) uiManager.showToast('📡', '正在對齊雲端指紋...');
+    if (!navigator.onLine) {
+        if (!silent) uiManager.showToast('📶', '通訊磁區斷路，請檢查網路連線');
+        return false;
+    }
+
+    // 🚀 2. 點火：啟動進度條並強制提升層級
+    if (!silent) {
+        uiManager.showProgressModal('雲端磁區回流', '正在初始化戰術路網...');
+    }
 
     try {
-        // 🚀 2. 調用發動機提領全量快照
-        const result = await syncEngine.fetchFromFirebase(state.userId);
+        // STEP 1: 快照提領 (導入 RPC 爆裂熔斷協定) (10-35%)
+        if (!silent) uiManager.updateProgress(10, '正在嘗試穿透通訊屏蔽...');
 
-        if (result.status === 'SUCCESS') {
-            const remoteData = result.data;
-            const cloudMetadata = result.metadata;
-            
-            const cloudUpdatedAt = cloudMetadata.lastSync || cloudMetadata.updatedAt || 0;
-            const localLastEdit = state.lastLocalEdit || 0;
+        // 💡 職人診斷：針對日誌中 RPC 'Listen' stream 爆裂，建立 20 秒絕對冷卻門檻
+        // 封殺 Firebase SDK 內部超過 10 次的無效重試 (handleSendFailure_)
+        const result = await Promise.race([
+            syncEngine.fetchFromFirebase(state.userId),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("RPC_STREAM_BURST")), 20000))
+        ]);
 
-            // 🛡️ 3. 版本時序衝突攔截 (略)
+        if (result && result.status === 'SUCCESS') {
+            const remoteData = result.data || {};
+            const cloudMetadata = result.metadata || {};
+            const cloudUpdatedAt = cloudMetadata.lastSync || cloudMetadata.updatedAt || Date.now();
 
-            // 🚀 4. 執行物理洗滌：先讓本地磁區歸零，防止新舊數據重疊碰撞
-            // 💡 職人提醒：確保還原後本地與雲端 100% 鏡像對齊
-            await dbManager.clear(); 
+            if (!silent) uiManager.updateProgress(35, '快照擷取完畢，執行物理洗滌...');
 
-            // 🚀 5. 全量物理固化程序 (執行穩壓寫入)
-            
-            // A. 行程磁區 (採用原子化批量接口)
-            if (remoteData.trips) {
+            // STEP 2: 物理洗滌與歸零 (45%)
+            await dbManager.clear();
+            if (!silent) uiManager.updateProgress(45, '本地磁區已排空，準備重組...');
+
+            // STEP 3: 分流穩壓寫入 (55-90%)
+            // A. 行程磁軌注入
+            if (remoteData.trips && Array.isArray(remoteData.trips)) {
+                if (!silent) uiManager.updateProgress(55, '正在注入行程數據軌道...');
                 await dbManager.saveAllTrips(remoteData.trips);
             }
 
-            // B. 靈感磁區：改用鏈式寫入封殺 I/O 競爭
-            if (remoteData.backlogs && Array.isArray(remoteData.backlogs)) {
-                for (const item of remoteData.backlogs) {
-                    if (item && item.id) {
-                        await dbManager.put(dbManager.STORES.BACKLOG, item);
-                    }
-                }
-            }
+            // B & C. 靈感與語料鏈式固化 (分段回報進度)
+            const backlogItems = Array.isArray(remoteData.backlogs) ? remoteData.backlogs : [];
+            const transItems = remoteData.translations || remoteData.translationVault || [];
 
-            // C. 語料磁區：執行深層洗滌後固化
-            const transData = remoteData.translations || remoteData.translationVault;
-            if (transData && Array.isArray(transData)) {
-                for (const item of transData) {
-                    if (item && item.id) {
-                        await dbManager.put(dbManager.STORES.TRANS_VAULT, item);
-                    }
-                }
+            if (!silent) uiManager.updateProgress(70, '正在精煉語法與靈感燃料...');
+            
+            // 🚀 職人加固：改用單步 await 緩解 IndexedDB 總線壓力，防止 I/O 競爭崩潰
+            for (const item of backlogItems) {
+                if (item?.id) await dbManager.put(dbManager.STORES.BACKLOG, item);
             }
+            if (!silent) uiManager.updateProgress(80, '靈感磁區對焦完畢...');
 
-            // D. 系統配置對焦
+            for (const item of transItems) {
+                if (item?.id) await dbManager.put(dbManager.STORES.TRANS_VAULT, item);
+            }
+            
+            if (!silent) uiManager.updateProgress(90, '數據封裝完成，同步配置指紋...');
+
+            // D. 配置對焦
             if (remoteData.config) {
                 const cfg = remoteData.config;
                 if (cfg.theme) localStorage.setItem('tf_theme_key', cfg.theme);
                 if (cfg.voice) localStorage.setItem('tf_voice_id', cfg.voice);
             }
 
-            // 🚀 6. 狀態指針更新與持久化
-            state.trips = remoteData.trips || [];
+            // 🚀 4. 持久化指針固化 (100%)
+            state.trips = Array.isArray(remoteData.trips) ? remoteData.trips : [];
             state.lastLocalEdit = cloudUpdatedAt;
             localStorage.setItem('tf_last_local_edit', state.lastLocalEdit);
             localStorage.setItem('tf_cloud_snapshot', JSON.stringify(cloudMetadata));
 
-            console.log("✅ [App] 雲端數據已全磁區回流，系統主權已對齊");
+            if (!silent) {
+                uiManager.updateProgress(100, '回流成功！重啟路網引擎...');
+            }
 
-            if (!silent) uiManager.showToast('✈️', '回流成功，正在重新校準路網...');
-
-            // 🚀 7. 視圖重連：執行最高層級的物理刷新
-            // 💡 職人診斷：大規模數據更新後，location.reload 是確保內存無噪訊最穩定的做法
+            // 🚀 5. 視圖重連：延遲一秒執行最高層級刷新
             setTimeout(() => {
-                location.reload(); 
-            }, 800);
+                if (!silent) uiManager.hideProgressModal();
+                location.reload();
+            }, 1000);
 
             return true;
-        } 
-        
-        // 8. 異常降壓處理...
+        } else {
+            throw new Error(result?.message || "FETCH_ERROR");
+        }
+
     } catch (err) {
-        console.error("❌ [App-Fetch-Collapse] 還原流程崩潰:", err);
-        if (!silent) uiManager.showToast('💥', '數據總線中斷，還原失敗');
+        console.error("❌ [App-Sync-Collapse] 物理還原崩潰:", err);
+        
+        // 🚀 6. 異常回收總線：確保介面不卡死
+        if (!silent) {
+            uiManager.hideProgressModal();
+            
+            // 職人級分流提示：精確捕捉日誌中的 RPC 爆裂與超時
+            let errorIcon = '💥';
+            let errorMsg = '數據總線中斷：' + (err.message || '未知錯誤');
+
+            if (err.message === "RPC_STREAM_BURST" || err.message === "NETWORK_TIMEOUT") {
+                errorIcon = '📶';
+                errorMsg = '通訊流爆裂 (DPI 攔截)，請切換路網重試';
+            } else if (err.message.includes('offline')) {
+                errorIcon = '📶';
+                errorMsg = '通訊磁區斷路，請檢查連線狀態';
+            }
+            
+            uiManager.showToast(errorIcon, errorMsg);
+        }
     }
     return false;
 },
-
 
 /** 🛰️ [Data-Lock] 數據固化中樞 (V2026.ULTRA 終極防護) 
  * 作用：加強全域指紋鎖定，確保每次寫入皆能驅動「雲端攔截器」偵測版本差
