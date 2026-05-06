@@ -2093,39 +2093,49 @@ autoTagTransportSeg(stops, boardingCount) {
     });
 },
 
-/** 🛍️ [Shopping Fuel] 購物指令發射器 (V2026.ULTRA 實體驗證版) */
+/** 🛍️ [Shopping Fuel] 購物指令發射器 (V2026.ULTRA 真值算法 V2 版) */
 copyShoppingPromptToClipboard() {
-    // 🚀 從 DOM 抓取當前對焦的城市與品項
     const city = document.getElementById('shop-city')?.value || '日本城市';
     const item = document.getElementById('shop-item')?.value || '必買商品';
+    
+    const now = new Date();
+    const currentYearMonth = `${now.getFullYear()} 年 ${now.getMonth() + 1} 月`;
 
-    // 🚀 核心指令：導入「2026 物理真值校準」與「分流對焦」
-    const prompt = `你是一位日籍專業採購與數據工程師。請針對「${city}」的「${item}」提供 5-8 個建議，並以【純淨燃料包】格式輸出。
+    const prompt = `你是一位日籍專業採購與數據工程師，專精於「繁體中文 (Taiwan Style)」在地化建議。請針對「${city}」的「${item}」執行以下【真值採購演算法】。
 
-🚨 核心實體驗證協定 (Physical Verification Protocol)：
-1. **即時營業狀態驗證**：務必確認該實體店面在 2026 年 4 月仍處於營業狀態。嚴禁輸出已歇業地點（如：播磨屋本店京都店已歇業，絕對禁止出現在結果中）。
-2. **搜尋導通優化 (Store Precision)**：[store] 欄位必須包含「品牌名 + 具體分店名/百貨名稱」(例如：不要只寫 "桂新堂"，應寫 "桂新堂 ジェイアール京都伊勢丹店")。這能確保 Google Maps 連結直接精準定位到特定櫃位，而非整棟百貨公司。
-3. **語義排他性**：針對店名過短容易導致搜尋偏移的品牌（如：長久堂），請務必補齊「地區名或分店名」(如：長久堂 北野店)，以封殺跨國同名店家的干擾。
+🚨 第一階段：規格枚舉 (Spec Enumeration)
+- 必須主動檢索該品牌在 2026 年當下所有的型號分支。
+- 針對「電壓」執行硬性過濾：僅保留標註 AC100V-240V 或 Multi-Voltage 的型號。
+- ⚠️ 關鍵指令：若該產品存在多種國際電壓規格（如：旗艦款與輕便款），你「必須」確保輸出結果中同時包含這兩者。嚴禁漏掉單價較高或規格較強的旗艦款。
+
+🚨 第二階段：物理斷路與價格校準 (Safety & Price Ground Truth)
+- 嚴禁誘導：禁止建議「搭配變壓器」或「去現場詢問」。
+- 嚴禁通靈：若某型號僅支援 100V，該型號絕對禁止出現在 JSON 中。
+- 💰 價格絕對真值校準：必須對位 ${currentYearMonth} 官方最新含稅定價。
+- 💡 邏輯防禦：你必須檢索「官方直營店 (Official Store)」或「大型百貨公司專櫃」的實時價格作為基準。嚴禁使用電商折扣、二手價格或舊款清倉價，封殺過期數據汙染。
+
+🚨 第三階段：在地化語義純化 (Taiwan Localization)
+- [info] 欄位禁止使用工程術語（數據、對焦、導通、模組、歸一化）。
+- 使用台灣口語慣用語（如：位置好找、這款不用變壓器、台灣插頭直接插）。
 
 🚨 輸出欄位規範：
-- name: 中文品名
-- name_jp: 日文原名 (供現場對照)
-- price: 日幣含稅價數字
-- store: 官方店名 (分店級精確度，確保導通率)
+請以【純淨燃料包】JSON 格式輸出 5-8 個實體節點：
+- name: 中文品名 (需強調規格，如：旗艦版 BX W / 輕巧版 Smart W)
+- name_jp: 日文原名 (含精確型號識別)
+- price: 數字 (必須反映 ${currentYearMonth} 官方最新定價，確保精確對應型號等級)
+- store: 官方店名 (分店級精確度)
 - quantity: 1
-- tags: ["購"]
-- info: 商品特色與選購心得
+- tags: ["購", "#實體驗證"]
+- info: [台灣口語化理由] + [物理安全性保證：明確標示該型號帶回台灣直接插電不會燒掉]
 - image_query: "[品牌] [日文原名] 商品写真"`;
 
-    // 🚀 執行物理複製與反饋
     navigator.clipboard.writeText(prompt).then(() => {
-        uiManager.showToast(`✨ 「${city} - ${item}」實體驗證指令已複製`);
+        uiManager.showToast(`✨ 「${city} - ${item}」真值算法 V2 已複製`);
     }).catch(err => {
-        console.error('Copy failed', err);
-        uiManager.showToast("複製失敗");
+        console.error('數據發射異常', err);
+        uiManager.showToast("數據路網對焦異常，請重新嘗試");
     });
 },
-
 
 /** 🛍️ [Shopping State] 切換勾選狀態並固化至數據層 */
 async toggleShoppingCheck(tripId, dayIndex, itemIndex, productIndex) {
@@ -2589,20 +2599,21 @@ deleteScheduleData(tripId, dayIndex, itemIndex) {
             </p>
         </div>`;
 
-    // 🚀 2. Actions 焊接：移除外層可能衝突的 flex 包裝，直接提供 button 燃料
-    // 配合新版 modalEngine，這兩顆按鈕將自動獲得 gap-4 的物理社交距離
-    const actions = `
-        <button onclick="App.modalRemove('delete-confirm-modal')" 
-                class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">
-            取消
-        </button>
-        <button onclick="App.executeDeleteScheduleItem('${tripId}', ${dayIndex}, ${itemIndex})" 
-                class="flex-1 py-4 bg-rose-500 text-white rounded-2xl font-black text-xs shadow-lg shadow-rose-100 active:scale-95 transition-all">
-            確認物理刪除
-        </button>`;
+// 🚀 2. Actions 焊接：導入 1:2 物理權重設計 (視覺重心導向)
+// 💡 職人診斷：取消按鈕賦予 flex-1，確認按鈕賦予 flex-[2]，並強化文字對焦感
+const actions = `
+    <button onclick="App.modalRemove('delete-confirm-modal')" 
+            class="flex-1 py-4 bg-slate-50 text-slate-500 rounded-2xl font-black text-xs active:scale-95 transition-all">
+        取消
+    </button>
+    <button onclick="App.executeDeleteScheduleItem('${tripId}', ${dayIndex}, ${itemIndex})" 
+            class="flex-[2] py-4 bg-rose-500 text-white rounded-2xl font-black text-xs shadow-lg shadow-rose-100 active:scale-95 transition-all">
+        確認刪除
+    </button>`;
+
 
     // 🚀 3. 物理點火
-    modalEngine.create('delete-confirm-modal', '⚠️ 物理斷路確認', content, actions);
+    modalEngine.create('delete-confirm-modal', '⚠️ 確認刪除', content, actions);
 },
 
 /** 🚀 執行刪除：物理執行與局部導通 (V2026.ULTRA 指紋同步版) */
