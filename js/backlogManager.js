@@ -8,37 +8,97 @@ import { uiManager } from './uiManager.js';
 export const backlogManager = {
 
 
+items: [], // 🚀 這裡是關鍵！確保數據搬運完後存放在此
+
+
+// 💡 職人診斷：預設值直接給予 Set 實體，封殺換頁時可能產生的 null/undefined 真空期
+__stagedSelection: new Set(),
+
+// 導入物理同步旗標，防止重複回溯
+__isHydrated: false,
+
+get _stagedSelection() {
+    // 🚀 【核心修正】實體化回溯協定
+    // 💡 診斷：若未經過物理對焦 (Hydration)，則執行一次 localStorage 抽吸
+    if (!this.__isHydrated) {
+        try {
+            const persisted = localStorage.getItem('tf_staged_selection');
+            const rawData = JSON.parse(persisted || '[]');
+            
+            // 強制型別對焦：確保基因 100% 為字串
+            const stringifiedIds = Array.isArray(rawData) ? rawData.map(id => String(id)) : [];
+            
+            // 物理注入實體
+            this.__stagedSelection = new Set(stringifiedIds);
+            this.__isHydrated = true;
+            
+            console.log(`📡 [Backlog-Recovery] 物理磁區回溯成功: ${this.__stagedSelection.size} 筆`);
+        } catch (e) {
+            console.error("🚨 [Recovery-Collapse] 物理回溯斷路:", e);
+            // 崩潰備援：至少維持空 Set
+            if (!(this.__stagedSelection instanceof Set)) {
+                this.__stagedSelection = new Set();
+            }
+            this.__isHydrated = true;
+        }
+    }
+    return this.__stagedSelection;
+},
+
+set _stagedSelection(val) {
+    // 💡 診斷：Setter 必須兼顧數據清洗
+    if (val instanceof Set) {
+        this.__stagedSelection = val;
+    } else if (Array.isArray(val)) {
+        this.__stagedSelection = new Set(val.map(id => String(id)));
+    }
+    this.__isHydrated = true; // 外部注入視同已完成同步
+},
+
+
 /**
- * 🚀 [Sector-Ignition] 磁區預熱發動機
- * 任務：確保 BACKLOG 磁區導通，並執行數據完整性校準
+ * 🚀 [Sector-Ignition] 磁區預熱發動機 (V2026.ULTRA 狀態鎖死版)
+ * 任務：確保 BACKLOG 磁區導通，執行 Window 全域焊接，並強制執行選取回溯
  */
 async init() {
     console.log("🏭 [Backlog-Refinery] 啟動精煉廠點火程序...");
 
+    // 🚀 0. [Global-Mount] 執行 F12 Console 與模組間導通焊接
+    // 💡 職人診斷：確保 window 參照永遠領先於數據操作
+    if (typeof window !== 'undefined') {
+        window.backlogManager = this;
+    }
+
+    // 🚀 1. [Selection-Pre-Focus] 選取狀態強制點火
+    // 💡 職人診斷：直接透過存取一次 Getter 觸發自癒與 Hydration 邏輯
+    // 這樣不論 localStorage 有無資料，都會在這一刻完成「物理對焦」
     try {
-        // 1. 🚀 自動點火補償：確保 dbManager 已就緒
+        const currentSelection = this._stagedSelection; 
+        console.log(`📡 [Backlog-Pre-Sync] 物理磁區回溯成功 | 已選取: ${currentSelection.size}`);
+    } catch (e) {
+        console.error("🚨 [Backlog-Pre-Sync-Collapse] 物理回溯斷路:", e);
+        // 崩潰補償：強制鎖死實體
+        this.__stagedSelection = new Set();
+        this.__isHydrated = true;
+    }
+
+    try {
+        // 2. 🚀 自動點火補償：確保 dbManager 已就緒
         if (!dbManager.db) {
             await dbManager.init();
         }
 
-        // 2. 🛡️ 磁區通路驗證
+        // 3. 🛡️ 磁區通路驗證
         const storeName = dbManager.STORES.BACKLOG;
         if (!dbManager.db.objectStoreNames.contains(storeName)) {
-            console.error(`❌ [Backlog-Ignition] 磁區 ${storeName} 缺失，發動機斷路。`);
+            console.error(`❌ [Backlog-Ignition] 磁區 ${storeName} 缺失。`);
             return false;
         }
 
-        // 3. 🧹 數據完整性掃描 (物理洗滌)
-        // 提取所有原子燃料進行健康檢查
+        // 4. 🧹 數據搬運掃描
         const records = await dbManager.getAll(storeName);
+        console.log(`🏁 [Backlog-Ignition] 發動機對焦完畢 | 燃料: ${records.length} | 狀態: 導通`);
         
-        // 🚀 職人級診斷：檢查是否有遺漏 ID 或 City 的殘次品
-        const brokenCount = records.filter(r => !r.id || !r.city).length;
-        if (brokenCount > 0) {
-            console.warn(`⚠️ [Backlog-Sanitize] 偵測到 ${brokenCount} 筆原子燃料損壞，建議執行磁區重整。`);
-        }
-
-        console.log(`🏁 [Backlog-Ignition] 發動機對焦完畢 | 現有燃料: ${records.length} 單位`);
         return true;
 
     } catch (err) {
@@ -46,6 +106,100 @@ async init() {
         return false;
     }
 },
+
+// =========================
+//      新增選取緩存邏輯
+// =========================
+
+
+/** 💉 [Atomic-Toggle] 選取狀態切換 (V2026.ULTRA 實時導通版) */
+toggleSelection(id, forceState = null) {
+    // 0. 🛡️ 型別降維協定
+    const sid = String(id);
+    
+    // 🚀 確保存取的是 Getter 以觸發回溯邏輯
+    const currentSet = this._stagedSelection; 
+
+    // 1. 🚀 記憶體軌道更新
+    let isStaged = false;
+
+    if (forceState !== null) {
+        // 🎯 模式 A：強制導通 (Checkbox 連動)
+        isStaged = !!forceState;
+        isStaged ? currentSet.add(sid) : currentSet.delete(sid);
+    } else {
+        // 🎯 模式 B：原子反轉 (列表直接點擊)
+        isStaged = !currentSet.has(sid);
+        isStaged ? currentSet.add(sid) : currentSet.delete(sid);
+    }
+
+    // 2. 💾 物理磁區固化
+    try {
+        const stagedArray = Array.from(currentSet);
+        localStorage.setItem('tf_staged_selection', JSON.stringify(stagedArray));
+    } catch (e) {
+        console.error("🚨 [Storage-Collapse] 物理寫入斷路:", e);
+    }
+
+    // 3. 📡 【核心補強】即時視覺導通 (Live-Refresh)
+    // 💡 職人診斷：直接觸發狀態廣播，確保掃帚數字與 FAB 狀態無需 F5 即可刷新
+    this.broadcastStateChange();
+
+    // 4. 🚀 反饋與返回
+    if (navigator.vibrate) navigator.vibrate(5);
+    return isStaged; 
+},
+
+/** 📡 [State-Broadcast] 全域狀態廣播 */
+broadcastStateChange() {
+    // 💡 職人提醒：封裝視圖刷新邏輯，確保兩端磁區 100% 同步
+    if (typeof viewEngine !== 'undefined' && typeof viewEngine.updateRefineryFAB === 'function') {
+        viewEngine.updateRefineryFAB();
+        
+        // 🚀 額外對焦：若選取管理器 Modal 正在開啟，這也會觸發數字指針的對位
+        console.log(`📡 [Backlog-Broadcast] 選取狀態已更新，通知視圖引擎重繪數字`);
+    }
+},
+
+/** 💉 [Atomic-Clear] 強制清空選取緩存與物理磁區 (V2026.ULTRA 狀態保活版) */
+clearSelection() {
+    // 1. 🚀 記憶體軌道釋放
+    // 💡 職人診斷：使用 Getter 確保觸發 Hydration 邏輯後再執行 clear()
+    this._stagedSelection.clear();
+
+    // 2. 💾 物理磁區抹除 (Persistence Wipe)
+    try {
+        localStorage.removeItem('tf_staged_selection');
+        console.log("🧹 [Backlog-Selection] 記憶體與物理磁區已同步釋放");
+    } catch (e) {
+        console.error("🚨 [Storage-Wipe-Collapse] 物理磁區清理失敗:", e);
+    }
+
+    // 3. 🚀 視覺路網閉環處理 (UX Loop Closure)
+    // 💡 職人對焦：若正處於「選取管理器」視窗內，必須強制熔斷模態框
+    if (window.App) {
+        // A. 移除管理器模態框 (封殺 Selection Matrix Vacuum 視覺)
+        App.modalRemove('selection-manager-modal');
+        
+        // B. 強制重導向至 backlog 視圖，確保所有卡片的 .selected 樣式被物理剥離
+        App.navigateTo('backlog');
+    }
+
+    // 4. 🎨 視覺連動廣播
+    if (typeof viewEngine !== 'undefined' && viewEngine.updateRefineryFAB) {
+        // 💡 職人提醒：確保右下角精煉投射鈕 (FAB) 即時沉降
+        viewEngine.updateRefineryFAB();
+    }
+    
+    if (navigator.vibrate) navigator.vibrate([10, 5, 10]);
+},
+
+
+/** 💉 [Atomic-Get] 獲取目前所有選取 ID */
+getSelectedIds() {
+    return Array.from(this._stagedSelection);
+},
+
 
 /**
  * 🚀 [Atomic-Retrieval] 原子燃料提領器
@@ -94,39 +248,82 @@ async updateItem(id, updates) {
     }
 },
 
-
 /**
- * 🚀 [Sector-Extraction] 原子燃料提取器
- * 任務：從磁區提取所有原子數據，並執行時間序列對焦（倒序）
+ * 🚀 [Sector-Extraction] 原子燃料提取器 (V2026.ULTRA 狀態保活版)
+ * 任務：提取全量數據，執行時間對焦，並透過 Getter 導通選取狀態
  */
 async loadAll() {
-    // 1. 🚀 自動導通：確保磁區已導通
+    // 1. 🚀 自動導通：確保 IndexedDB 磁區已就緒
     if (!dbManager.db) await this.init();
 
     try {
-        // 2. 物理搬運：從 BACKLOG 磁區提取全量數據
+        // 2. 物理搬運
         const storeName = dbManager.STORES.BACKLOG;
         const rawRecords = await dbManager.getAll(storeName);
 
-        // 🛡️ 數據真空檢查
-        if (!Array.isArray(rawRecords)) return [];
+        if (!Array.isArray(rawRecords)) {
+            this.items = []; // 🛡️ 物理防禦
+            return [];
+        }
 
-        // 3. 🚀 時間序列對焦 (Sorting)
-        // 💡 職人原則：最新採集的靈感（店名/景點）應具備最高的視認性
-        const sortedRecords = rawRecords.sort((a, b) => {
+        // 🔥 [CRITICAL WELD] 數據實體化導通
+        // 💡 職人診斷：必須將提取出的燃料強行寫入當前實體的 items 磁區
+        // 這是解決 viewEngine 抓到「靈感庫: 0」的最關鍵焊接點
+        this.items = rawRecords;
+
+        // 3. 🚀 時間序列對焦
+        const sortedRecords = [...this.items].sort((a, b) => {
             const timeA = a.createdAt || 0;
             const timeB = b.createdAt || 0;
-            return timeB - timeA; // 降序排列：最新在前
+            return timeB - timeA;
         });
 
-        console.log(`📡 [Backlog-Load] 原子燃料搬運完畢 | 總計: ${sortedRecords.length} 單位`);
+        // 🚀 4. 【核心補強】全域掛載確認
+        // 💡 職人診斷：確保 window 參照永遠指向當前正在運作的實體
+        if (typeof window !== 'undefined') {
+            window.backlogManager = this;
+        }
+
+        // 💡 透過存取觸發 Getter 自癒，並鎖定當前物理規模
+        const currentSelectionSize = this._stagedSelection.size;
+
+        console.log(`📡 [Backlog-Load] 原子燃料搬運完畢 | 總計: ${sortedRecords.length} | 選取狀態: ${currentSelectionSize} 鎖定`);
+        
+        // 🚀 5. 【狀態廣播】強制刷新 FAB 真值 (導入微秒補償)
+        if (typeof viewEngine !== 'undefined' && viewEngine.updateRefineryFAB) {
+            viewEngine.updateRefineryFAB();
+            setTimeout(() => viewEngine.updateRefineryFAB(), 50);
+        }
+
         return sortedRecords;
 
     } catch (err) {
         console.error("❌ [Backlog-Load-Collapse] 燃料提取中斷:", err);
+        this.items = []; // 崩潰時確保磁區不為 undefined
         return [];
     }
 },
+
+
+/**
+ * 🚀 [State-Guard] 強制狀態廣播發動機 (V2026.ULTRA 物理對焦版)
+ * 任務：供外部 (App.js) 在切換視圖後手動點火，確保 FAB 依據物理磁區數據立即顯影
+ */
+syncFAB() {
+    // 1. 🚀 觸發 Getter 自癒
+    // 💡 職人診斷：存取一次屬性，確保 __stagedSelection 已從 LocalStorage 完成回溯
+    const currentSize = this._stagedSelection.size;
+
+    // 2. 🎨 執行視圖焊接
+    // 💡 職人診斷：檢查 viewEngine 是否導通，並執行 FAB 渲染更新
+    if (typeof viewEngine !== 'undefined' && viewEngine.updateRefineryFAB) {
+        viewEngine.updateRefineryFAB();
+        console.log(`📡 [FAB-Sync] 廣播點火成功 | 當前物理規模: ${currentSize}`);
+    } else {
+        console.warn("⚠️ [FAB-Sync] 視圖引擎未導通，點火中斷。");
+    }
+},
+
 
 /** 🚀 [Label-Self-Healing] 標籤自癒協定 */
 async _ensureCategoryExists(category) {
@@ -374,44 +571,61 @@ _parseRawInput(text) {
 },
 
 /**
- * 🚀 [Refinery-Projection] 燃料投射發動機
- * 任務：提取選中原子燃料，合成對焦最高指令的 AI Prompt
+ * 🚀 [Refinery-Projection] 燃料投射發動機 (V2026.ULTRA 物理對焦修正版)
  */
-async projectToDay(selectedIds, targetTripId, dayIndex) {
-    if (!selectedIds || selectedIds.length === 0) {
+async projectToDay(targetTripId, dayIndex) {
+    // 💡 職人診斷：確保提取的是乾淨的 ID 序列
+    const selectedIds = Array.from(this._stagedSelection || []);
+
+    if (selectedIds.length === 0) {
         uiManager.showToast('⚠️', '未選取任何靈感燃料');
         return;
     }
 
-    console.log(`📡 [Backlog-Project] 啟動投射程序 | 數量: ${selectedIds.length} | Day ${dayIndex + 1}`);
+    console.log(`📡 [Backlog-Project] 啟動投射程序 | 序列規模: ${selectedIds.length}`);
 
     try {
         // 1. 🚀 燃料提取
         const storeName = dbManager.STORES.BACKLOG;
         const allBacklogs = await dbManager.getAll(storeName);
-        // 💡 職人修正：確保按照選取順序或 ID 順序提取，這裡維持選取順序的邏輯感
-        const selectedItems = selectedIds.map(id => allBacklogs.find(item => item.id === id)).filter(Boolean);
+        
+        // 🚀 【核心修正】執行雙向型別對焦
+        // 💡 職人診斷：強制使用 String(id) 比對，封殺「數字 ID」導致 find 失敗的斷路
+        const selectedItems = selectedIds.map(id => {
+            const targetId = String(id);
+            return allBacklogs.find(item => String(item.id) === targetId);
+        }).filter(Boolean); // 排除找不到的髒數據
 
+        // 🛡️ 數據保全校準：若映射後的數量不符，噴出警告
         if (selectedItems.length === 0) throw new Error("FUEL_NOT_FOUND");
+        if (selectedItems.length !== selectedIds.length) {
+            console.warn(`⚠️ [Project-Loss] 燃料損耗：選取 ${selectedIds.length} 筆，僅導通 ${selectedItems.length} 筆`);
+        }
 
-        // 2. 🚀 地理對焦
+        // 2. 🚀 地理對焦 (以首位燃料為基準)
         const primaryCity = selectedItems[0].city || "日本區域";
 
-        // 3. 🚀 高純度清單合成 (去除冗餘標籤，僅提供店名與備註供 Prompt 二次編號)
-        const pureItemsList = selectedItems.map(it => `${it.name}${it.info ? ` (${it.info})` : ''}`).join('\n');
+        // 3. 🚀 高純度清單合成
+        // 💡 確保每一行都包含完整資訊，透過 join('\n') 傳遞給 AI
+        const pureItemsList = selectedItems.map(it => {
+            const info = it.info ? ` (${it.info})` : '';
+            return `${it.name}${info}`;
+        }).join('\n');
         
-        // 4. 🚀 呼叫最高協定指令合成器
+        // 4. 🚀 呼叫指令合成器 (V2.1 版本)
         const refineryPrompt = this._generateRefineryPrompt(primaryCity, pureItemsList);
 
         // 5. 🚀 物理複製
+        if (!refineryPrompt) throw new Error("PROMPT_GEN_FAILED");
         await navigator.clipboard.writeText(refineryPrompt);
 
-        // 6. 🚀 交互與 Haptic 反饋
+        // 6. 🚀 交互與彈窗
+        // ... (保持原有的 modalEngine.create 邏輯，但確保顯示的是最新的 selectedItems)
         modalEngine.create('refinery-ready-modal', '🏭 精煉指令已對焦', `
             <div class="space-y-4 py-2">
                 <div class="p-4 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner">
-                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">預計精煉序列</p>
-                    <div class="space-y-1">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">預計精煉序列 (共 ${selectedItems.length} 筆)</p>
+                    <div class="max-h-[200px] overflow-y-auto space-y-1">
                         ${selectedItems.map((i, idx) => `
                             <div class="text-[11px] font-bold text-slate-700 flex gap-2">
                                 <span class="theme-text-pink">${idx + 1}.</span> ${i.name}
@@ -420,14 +634,12 @@ async projectToDay(selectedIds, targetTripId, dayIndex) {
                     </div>
                 </div>
                 <div class="px-1 space-y-2">
-                    <p class="text-[11px] font-bold text-slate-600">🚀 高品質指令已成功複製至剪貼簿</p>
-                    <p class="text-[10px] text-slate-400 leading-relaxed">
-                        請前往 AI (Gemini/GPT) 直接貼上。生成的 JSON 將自動標註「⚠️ 交通斷點」，方便後續執行交通路網精煉。
-                    </p>
+                    <p class="text-[11px] font-bold text-slate-600">🚀 指令已封裝至剪貼簿</p>
+                    <p class="text-[10px] text-slate-400">前往 AI 貼上即可。若只看到一筆行程，請檢查 ID 型別對焦是否失效。</p>
                 </div>
             </div>
         `, `
-            <button onclick="App.modalRemove('refinery-ready-modal')" class="w-full py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">確認接收</button>
+            <button onclick="App.modalRemove('refinery-ready-modal')" class="w-full py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg">確認接收</button>
         `);
 
         if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
@@ -438,86 +650,105 @@ async projectToDay(selectedIds, targetTripId, dayIndex) {
     }
 },
 
-/** 🛰️ [Public] 執行精煉指令複製 (V2026.ULTRA 物理導通版) */
-copyRefineryPrompt(city, idsJson) {
+
+/** 🛰️ [Public] 執行精煉指令複製 (V2026.ULTRA 數據驅動加固版) */
+async copyRefineryPrompt(city, idsJson) {
     try {
-        // 1. 🚀 數據解析：將傳入的 JSON 字串轉回 ID 陣列
-        const ids = JSON.parse(idsJson.replace(/&quot;/g, '"'));
-        
-        // 2. 🚀 內容採集：從 DOM 中提取選中項目的名稱
-        // 💡 職人診斷：確保提取的是 h3 內的純淨店名
-        const itemsList = ids.map(id => {
-            const card = document.getElementById(`card-${id}`);
-            return card ? card.querySelector('h3').innerText.trim() : "";
-        }).filter(name => name !== "").join('\n');
+        // 1. 🚀 優先提領記憶體中的選取 Set (跨頁真值)
+        const stagedIds = Array.from(this._stagedSelection || []);
+        let targetIds = [];
+
+        // 💡 職人診斷：智感對焦。若 Set 有值則採信 Set；若無（單點複製）則解析傳入參數
+        if (stagedIds.length > 0) {
+            targetIds = stagedIds;
+        } else {
+            targetIds = Array.isArray(idsJson) 
+                ? idsJson 
+                : JSON.parse(String(idsJson || "[]").replace(/&quot;/g, '"'));
+        }
+
+        const sids = targetIds.map(id => String(id));
+        if (sids.length === 0) return uiManager.showToast('⚠️', "未選取任何靈感燃料");
+
+        // 2. 🚀 內容採集：數據驅動 (封殺 DOM 依賴)
+        // 💡 職人診斷：直接向 dbManager 提領全量燃料，確保換頁後依然導通
+        const allBacklogs = await dbManager.getAll(dbManager.STORES.BACKLOG);
+        const itemsList = sids.map(sid => {
+            const found = allBacklogs.find(it => String(it.id) === sid);
+            return found ? found.name : "";
+        }).filter(n => n !== "").join('\n');
+
+        if (!itemsList) throw new Error("FUEL_NOT_FOUND");
 
         // 3. 🚀 指令合成
         const prompt = this._generateRefineryPrompt(city, itemsList);
 
-        // 4. 🚀 執行實體複製 (Physical Copy)
-        // 💡 採用 Base64 封裝協定確保特殊字元不失真
-        const safePrompt = btoa(encodeURIComponent(prompt).replace(/%([0-9A-F]{2})/g, (match, p1) => {
-            return String.fromCharCode('0x' + p1);
-        }));
-        
-        // 呼叫 App 層級的剪貼簿工具 (請確保 App.copyToClipboard 已定義)
-        App.copyToClipboard(safePrompt);
-
-        // 5. 🚀 狀態反饋
-        const mode = localStorage.getItem('tf_refinery_mode') || 'split';
-        const modeLabel = mode === 'suite' ? '整合套裝' : '單獨精煉';
-        
-        uiManager.showToast('✨', `指令已複製 (${modeLabel})`);
-        
-        if (navigator.vibrate) navigator.vibrate(15);
+        // 4. 🚀 物理直通特快車道 (封殺總線碰撞)
+        // 💡 職人診斷：直接呼叫專屬直通函數，禁止經過 main.js 的 replace 邏輯
+        if (window.App && typeof App.copyRefineryDirect === 'function') {
+            App.copyRefineryDirect(prompt);
+        } else {
+            // 備援：直接物理寫入
+            await navigator.clipboard.writeText(prompt);
+            uiManager.showToast('✨', `全量導通 (${sids.length} 筆)`);
+        }
 
     } catch (e) {
-        console.error("📋 [Copy-Error] 指令複製失敗:", e);
-        uiManager.showToast('⚠️', "指令磁區損毀，請重新選取");
+        console.error("📋 [Copy-Collapse] 物理斷路:", e);
+        uiManager.showToast('⚠️', "數據路網對焦異常");
     }
 },
 
-/** 🧪 [Private] 精煉廠專屬指令合成器 (V2026.ULTRA V2.0 模式對焦版) */
+/** 🧪 [Private] 精煉廠專屬指令合成器 (V2026.ULTRA V2.1 模式對焦版) */
 _generateRefineryPrompt(city, itemsList) {
-    // 🚀 核心焊接：讀取磁區中的精煉模式設定
+    // 0. 🛡️ 數據完整性預檢
+    // 💡 職人診斷：若 itemsList 為空，直接攔截斷路，防止 AI 輸出的空 JSON 導致系統崩潰
+    if (!itemsList || itemsList.trim() === "") {
+        console.error("🚨 [Prompt-Generator] 燃料清單真空，拒絕合成");
+        return "";
+    }
+
+    // 🚀 1. 核心焊接：讀取精煉模式
     const refineryMode = localStorage.getItem('tf_refinery_mode') || 'split';
     const isSuite = refineryMode === 'suite';
 
-    // 💡 模式語義分流
+    // 💡 模式語義分流：強化「全量處理」的暗示，防止 AI 偷懶縮減節點
     const modeInstruction = isSuite 
-        ? `【🚀 整合模式：請將所有項目整合為一個具備連續時序的套裝行程，著重於點位間的銜接感與動線最佳化。】`
-        : `【🚀 單獨模式：請將每個項目視為獨立節點，分別提供詳盡的 SPOTLIGHT 與備註。】`;
+        ? `【🚀 整合模式：請將以下「所有」項目整合為一個連續時序套裝行程，嚴禁遺漏任何節點，著重動線最佳化。】`
+        : `【🚀 單獨模式：請將以下「每個」項目視為獨立節點，分別提供詳盡的數據精煉。】`;
 
+    // 2. 🚀 指令封裝
+    // 💡 職人診斷：透過反引號結構化，強制 AI 必須輸出「陣列」格式，且每個節點必須對應原始項目
     return `【STRICT_JSON_ONLY】
-請根據「${city}」的實境地理，將以下原子燃料優化為高品質行程模組（繁體中文），禁前言。
+你是一位具備實境地理路網數據的精煉專家。請根據「${city}」的實境地理，將以下 ${isSuite ? '全量項目整合' : '逐一項目精煉'} 為高品質行程模組（繁體中文），禁前言。
 
-【📍 待精煉原子燃料】
+【📍 待精煉原子燃料 (共計 ${itemsList.split('\n').length} 筆)】
 ${itemsList}
 
 ${modeInstruction}
 
 【🚨 數據保真與重組協定】
-1. 🚀 店名保真：[task] 欄位必須包含原始燃料中的「店名/景點全稱」，嚴禁自行縮寫，以確保系統數據對應反灰標記。
-2. 🚀 動線重組：請根據地理鄰近性重新編排時間序列，確保行程不走回頭路。
-3. 🚀 交通標記：若點位間需要搭乘「大眾運輸」，請務必在 [move] 欄位結尾加上「(⚠️ 需另行執行交通路網精煉)」。
-4. 🚀 亮點噴發：[spotlight] 必須包含「實質避坑建議」；[expense] 僅限餐飲與門票，使用純數字。
+1. 🚀 節點保全：輸出之 JSON 陣列長度必須「等於」上述原子燃料的數量，嚴禁合併或刪除景點。
+2. 🚀 店名保真：[task] 欄位必須包含原始燃料中的「完整店名/景點全稱」，嚴禁縮寫或改名，以供系統執行「已去過」狀態對焦。
+3. 🚀 交通標記：點位間移動必須在 [move] 結尾標註「(⚠️ 需另行執行交通路網精煉)」。
+4. 🚀 亮點噴發：[spotlight] 必須提供該點位的「排隊攻略」或「避坑建議」；[expense] 僅限餐飲與門票，使用「純數字」。
 
-【🚨 負面約束：若出現以下詞彙，視為數據污染，將導致解析失敗】
-- 禁止詞彙：功能模組, 語義對焦, 實境應用, 核心零件, 數據純化, 戰術, 打擊, 燃料包
+【🚨 數據純淨化約束 (禁言清單)】
+- 嚴禁提及：功能模組, 語義對焦, 實境應用, 核心零件, 數據純化, 戰術, 打擊, 燃料包, 焊接, 指令集
 
 【輸出範例格式】
 [
   {
     "time": "HH:mm",
     "task": "【標題】完整原始店名",
-    "move": "建議移動手段/月台資訊 (⚠️ 需另行執行交通路網精煉)",
-    "expense": 數字,
-    "spotlight": "✨必看亮點/避坑指南/排隊攻略",
+    "move": "建議移動手段 (⚠️ 需另行執行交通路網精煉)",
+    "expense": 0,
+    "spotlight": "✨亮點/避坑建議",
     "note": "細節備註"
   }
 ]
 
-請以【純淨 JSON 陣列】格式輸出，禁止前言，嚴禁 Markdown 之外的任何文字。`;
+請以【純淨 JSON 陣列】格式輸出，禁止前言與結語，嚴禁任何 Markdown 之外的冗餘解釋。`;
 },
 
 /** 🏭 [Refinery-Core] 批量存儲原子燃料 */
@@ -701,6 +932,8 @@ async importBacklogFuel() {
     } catch (err) {
         uiManager.showToast('❌', '數據格式異常');
     }
-}
-
+  }
 };
+
+// 🚀 執行末端強制焊接 (確保 ESM 環境下 window 依然導通)
+if (typeof window !== 'undefined') window.backlogManager = backlogManager;

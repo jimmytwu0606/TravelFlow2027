@@ -3836,7 +3836,7 @@ _renderShoppingFuelCards(item, dayIndex, itemIndex) {
 // ============================================================
 
 
-/** 🏭 [Refinery-Main] 備選精煉廠主進入點 (雙端分頁與搜尋焦點優化版) */
+/** 🏭 [Refinery-Main] 備選精煉廠主進入點 (V2026.ULTRA 跨頁持久化版) */
 renderBacklogPage(container, backlogs) {
     if (!state.backlogContext) state.backlogContext = { page: 1, searchQuery: '' };
 
@@ -3884,18 +3884,24 @@ renderBacklogPage(container, backlogs) {
         ${this._renderBacklogFAB()}
     `;
 
-    // 🚀 4. 物理對焦還原程序
+    // 🚀 4. 物理對焦還原程序 (V2026.ULTRA 強健加固)
     requestAnimationFrame(() => {
-        // A. 恢復搜尋框焦點與光標位置 (確保搜尋不因重繪而中斷)
+        // A. 恢復搜尋框焦點
         const newSearchInput = document.getElementById('backlog-search-input');
         if (newSearchInput && isSearchFocused) {
             newSearchInput.focus();
             newSearchInput.setSelectionRange(cursorStart, cursorStart);
         }
-        // B. 恢復 FAB 隱顯狀態
-        if (typeof this.updateRefineryFAB === 'function') this.updateRefineryFAB();
+        
+        // B. 【核心修正】執行 FAB 狀態導通
+        // 💡 職人診斷：換頁後 DOM 被重寫，必須立刻向 backlogManager 查帳並重新點火 FAB
+        if (typeof this.updateRefineryFAB === 'function') {
+            this.updateRefineryFAB();
+            console.log(`🏁 [UI-Rebound] 換頁導通完畢 | FAB 狀態已對焦`);
+        }
     });
 },
+
 
 /** 📑 [Sub-Component] 渲染分頁指示器 (雙向對稱佈署版) */
 _renderBacklogPagination(current, total, totalItems, position) {
@@ -3927,8 +3933,12 @@ _renderBacklogPagination(current, total, totalItems, position) {
 },
 
 
-/** 🧪 [Sub-Component] 渲染精煉廠頭部 (V2026.ULTRA 數據流通強化版) */
+/** 🧪 [Sub-Component] 渲染精煉廠頭部 (V2026.ULTRA 數據實時導通版) */
 _renderBacklogHeader() {
+    // 🚀 數據前檢：提領當前持久化 Set 規模
+    const manager = window.backlogManager || (typeof backlogManager !== 'undefined' ? backlogManager : null);
+    const selectionSize = manager?._stagedSelection?.size || 0;
+
     return `
         <div class="px-6 pt-4 pb-2 animate-fade-in">
             <div class="flex justify-between items-end mb-6">
@@ -3936,35 +3946,97 @@ _renderBacklogHeader() {
                     <h2 class="text-2xl font-black text-slate-800 tracking-tighter">靈感匯聚</h2>
                     <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Atomic Refinery V2026</p>
                 </div>
-                <div class="flex gap-2.5">
-                    <!-- 1. 📤 匯出按鈕：彈出選擇器模態框 -->
-                    <button onclick="App.modalCreate('backlog-export-modal', '📤 選擇匯出目標', viewEngine._renderExportSelector(), viewEngine._renderExportActions())" 
-                            class="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center border border-slate-100 active:scale-90 transition-all hover:text-pink-500 shadow-sm">
-                        <span class="text-sm">📤</span>
-                    </button>
-
-                    <!-- 2. 📥 匯入按鈕：彈出 JSON 注入模態框 -->
-                    <button onclick="App.modalCreate('backlog-import-modal', '📥 注入靈感燃料', viewEngine._renderImportForm(), viewEngine._renderImportActions())" 
-                            class="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center border border-slate-100 active:scale-90 transition-all hover:text-pink-500 shadow-sm">
-                        <span class="text-sm">📥</span>
-                    </button>
-
-                    <!-- 3. ✨ AI 靈感搜尋按鈕 (原偵蒐鈕) -->
-                    <button onclick="App.modalCreate('ai-recon-modal', '📡 靈感搜尋', viewEngine._renderReconForm(), viewEngine._renderReconActions())" 
-                            class="w-10 h-10 bg-pink-50 text-pink-500 rounded-2xl flex items-center justify-center border border-pink-100 active:scale-90 transition-all shadow-sm hover:shadow-pink-100">
-                        <span class="text-lg">✨</span>
-                    </button>
+                <div class="flex items-center gap-2.5">
+                    <button onclick="App.modalCreate('backlog-export-modal', '📤 匯出目標', viewEngine._renderExportSelector(), viewEngine._renderExportActions())" class="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center border border-slate-100 active:scale-90 transition-all hover:text-pink-500 shadow-sm"><span class="text-sm">📤</span></button>
+                    <button onclick="App.modalCreate('backlog-import-modal', '📥 注入燃料', viewEngine._renderImportForm(), viewEngine._renderImportActions())" class="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center border border-slate-100 active:scale-90 transition-all hover:text-pink-500 shadow-sm"><span class="text-sm">📥</span></button>
+                    <button onclick="App.modalCreate('ai-recon-modal', '📡 靈感搜尋', viewEngine._renderReconForm(), viewEngine._renderReconActions())" class="w-10 h-10 bg-pink-50 text-pink-500 rounded-2xl flex items-center justify-center border border-pink-100 active:scale-90 transition-all shadow-sm"><span class="text-lg">✨</span></button>
                     
-                    <!-- 4. ➕ 手動新增按鈕 -->
                     <button onclick="App.modalCreate('add-backlog-modal', '📍 採集新靈感', viewEngine._renderAddBacklogForm(), viewEngine._renderAddBacklogActions())" 
                             class="w-10 h-10 theme-bg text-white rounded-2xl flex items-center justify-center shadow-lg shadow-pink-100 active:scale-90 transition-all">
                         <span class="text-xl font-bold">+</span>
+                    </button>
+
+                    <button id="btn-selection-manager" 
+                            onclick="App.openSelectionManager()" 
+                            class="w-10 h-10 rounded-2xl flex items-center justify-center border transition-all active:scale-90 relative
+                                   ${selectionSize > 0 ? 'bg-white text-rose-500 border-rose-100 shadow-sm' : 'bg-slate-50 text-slate-300 border-slate-100 opacity-50'}">
+                        <span class="text-sm">🧹</span>
+                        
+                        <span id="selection-badge-count" 
+                              class="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white transition-all duration-300
+                                     ${selectionSize > 0 ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}">
+                            ${selectionSize}
+                        </span>
                     </button>
                 </div>
             </div>
         </div>`;
 },
 
+/** 🧬 [Refinery-Manager] 渲染選取管理清單 (V2026.ULTRA 極簡即時導通版) */
+_renderSelectionManagerContent() {
+    // 🚀 1. 真值源定位
+    const manager = window.backlogManager || (typeof backlogManager !== 'undefined' ? backlogManager : null);
+    
+    if (!manager) {
+        console.error("🚨 [Manager-Offline] 精煉廠主控模組未導通");
+        return `<div class="py-20 text-center text-rose-500 font-black text-xs uppercase tracking-widest">Module Disconnected</div>`;
+    }
+
+    // 🚀 2. 數據提領與過濾
+    const allBacklogs = (manager.items && manager.items.length > 0) ? manager.items : (window.state?.backlogs || []);
+    const stagedSet = manager._stagedSelection; // 觸發 Getter 回溯
+    const selectedIds = Array.from(stagedSet || []).map(id => String(id));
+    const items = allBacklogs.filter(b => selectedIds.includes(String(b.id)));
+
+    console.log(`📡 [Manager-Focus] 掃帚數字校準: ${selectedIds.length} | 磁區在庫: ${allBacklogs.length}`);
+
+    // 🛡️ 數據真空保護 (空狀態視覺)
+    if (items.length === 0) {
+        return `
+            <div class="py-24 text-center animate-fade-in">
+                <div class="text-4xl mb-4 grayscale opacity-20">🧹</div>
+                <p class="text-slate-300 font-black text-[10px] uppercase tracking-[0.3em]">Vacuum Storage</p>
+                <p class="text-slate-400 text-[9px] mt-2 italic">選取磁區已排空</p>
+            </div>`;
+    }
+
+    return `
+    <div class="space-y-4 text-left pb-4 animate-fade-in">
+        <div class="px-1 mb-4">
+            <button onclick="backlogManager.clearSelection()" 
+                    class="w-full py-4 bg-rose-50 text-rose-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] active:scale-95 transition-all shadow-sm border border-rose-100/50 hover:bg-rose-100">
+                一鍵清空磁區 (Clear All)
+            </button>
+        </div>
+
+        <div class="max-h-[45vh] overflow-y-auto pr-1 space-y-2 custom-scrollbar" id="manager-items-track">
+            ${items.map(item => `
+                <div class="flex items-center gap-4 p-5 bg-white rounded-[2rem] border border-slate-100 group shadow-sm hover:border-pink-200 transition-all">
+                    <label class="relative flex items-center cursor-pointer">
+                        <input type="checkbox" checked class="hidden peer manager-item-check" value="${item.id}" 
+                               onchange="backlogManager.toggleSelection('${item.id}', this.checked); App.openSelectionManager();">
+                        <div class="w-7 h-7 rounded-xl border-2 border-slate-200 bg-white peer-checked:theme-bg peer-checked:border-transparent transition-all flex items-center justify-center">
+                            <i class="fa-solid fa-check text-white text-xs opacity-0 peer-checked:opacity-100"></i>
+                        </div>
+                    </label>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[14px] font-black text-slate-800 truncate">${item.name || '未命名靈感'}</p>
+                        <div class="flex items-center gap-2 mt-1">
+                            <span class="text-[9px] font-black theme-text-pink px-2 py-0.5 bg-pink-50 rounded-md uppercase italic">${item.category || '食'}</span>
+                            <p class="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">📍 ${item.city || '未知區域'}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    </div>`;
+},
+
+
+_renderSelectionManagerActions() {
+    return `<button onclick="App.modalRemove('selection-manager-modal')" class="w-full py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">完成管理</button>`;
+},
 
 /** 🧬 [Export-Selector] 匯出選擇器介面 */
 _renderExportSelector() {
@@ -4101,17 +4173,20 @@ _renderBacklogNav(cities, activeCity, activeCat) {
         '行': '🚌', '住': '🏨', '醫': '🏥', '史': '🏯', '景': '🎑', '泉': '♨️' 
     };
 
+    // 💡 職人提醒：為每個按鈕注入精確的 ID 指紋，以便 viewEngine 執行物理置中
     return `
         <div class="px-6 space-y-4 mb-2 animate-fade-in">
-            <!-- 🚀 1. 區域導航列 (City Track)：加入 snap-x 與 scroll-smooth -->
+            <!-- 🚀 1. 區域導航列 (City Track) -->
             <div id="backlog-city-track" class="flex gap-2 overflow-x-auto no-scrollbar pb-1 snap-x scroll-smooth">
-                <button id="city-tab-全部" onclick="App.filterBacklogByCity('全部')" 
+                <button id="city-tab-全部" 
+                        onclick="App.filterBacklogByCity('全部'); viewEngine.updateRefineryFAB();" 
                         class="shrink-0 px-4 py-2 rounded-xl text-[11px] font-black transition-all snap-center
                         ${activeCity === '全部' ? 'theme-bg text-white shadow-md' : 'bg-slate-50 text-slate-400'}">
                     🌐 全部區域
                 </button>
                 ${cities.map(city => `
-                    <button id="city-tab-${city}" onclick="App.filterBacklogByCity('${city}')" 
+                    <button id="city-tab-${city}" 
+                            onclick="App.filterBacklogByCity('${city}'); viewEngine.updateRefineryFAB();" 
                             class="shrink-0 px-4 py-2 rounded-xl text-[11px] font-black transition-all snap-center
                             ${activeCity === city ? 'theme-bg text-white shadow-md' : 'bg-slate-50 text-slate-400'}">
                         📍 ${city}
@@ -4119,12 +4194,13 @@ _renderBacklogNav(cities, activeCity, activeCat) {
                 `).join('')}
             </div>
 
-            <!-- 🚀 2. 屬性導航列 (Category Track)：加入唯一 ID 指紋 -->
+            <!-- 🚀 2. 屬性導航列 (Category Track) -->
             <div id="backlog-cat-track" class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-4 border-b border-slate-50 snap-x scroll-smooth">
                 ${categories.map(cat => {
                     const icon = iconMap[cat] || '🏷️';
                     return `
-                        <button id="cat-tab-${cat}" onclick="App.filterBacklogByCat('${cat}')" 
+                        <button id="cat-tab-${cat}" 
+                                onclick="App.filterBacklogByCat('${cat}'); viewEngine.updateRefineryFAB();" 
                                 class="shrink-0 flex items-center gap-1.5 px-3 py-1.5 border rounded-full transition-all snap-center
                                 ${activeCat === cat ? 'border-pink-200 bg-pink-50 text-pink-600 shadow-sm' : 'border-slate-100 bg-white text-slate-400'}">
                             <span class="text-xs">${icon}</span>
@@ -4140,6 +4216,7 @@ _renderBacklogNav(cities, activeCity, activeCat) {
             </div>
         </div>`;
 },
+
 
 /** 🧬 [Physical-Focus] 執行靈感導航標籤置中 (V2026.ULTRA 座標校準版) */
 focusBacklogTabs(activeCity, activeCat) {
@@ -4298,34 +4375,41 @@ _renderBacklogBadges(days) {
     `).join('');
 },
 
-/** 🧪 [Main-Component] 渲染單一原子燃料卡片 (匯聚感應與主權狀態並行版) */
+/** 🧪 [Main-Component] 渲染單一原子燃料卡片 (強制持久化數據對焦版) */
 _renderBacklogCard(item) {
-    // 🚀 1. 核心匯聚感應：掃描全行程磁區，計算該靈感出現的 Dn 軌道
-    // 💡 職人提醒：這是原本被我弄掉的「即時感應功能」，現在正式歸位
+    // 🚀 1. 核心匯聚感應：掃描全行程磁區 (Dn 標籤)
     const projectedDays = this._calculateProjectedDays(item.name) || [];
     
-    // 🚀 2. 雙軌判定：無論是數據 status 標記還是物理名稱比對成功，皆視為「已投射」
+    // 🚀 2. 【核心斷路修復】持久化選取真值提取
+    // 💡 職人診斷：捨棄 item 傳入的舊狀態，直接從 backlogManager 的 Set 或 localStorage 提領即時數據
+    // 確保換頁重新渲染時，邏輯判斷 100% 導通
+    const isStaged = (typeof backlogManager !== 'undefined' && backlogManager._stagedSelection)
+        ? backlogManager._stagedSelection.has(item.id)
+        : false;
+
+    // 🚀 3. 匯入狀態判定
     const isProjected = item.status === 'projected' || projectedDays.length > 0;
     
-    // 🚀 3. 視覺狀態與顏色對焦
-    const stateStyles = isProjected ? 'ring-2 ring-pink-50 shadow-sm' : 'hover:shadow-md cursor-pointer';
-    const statusText = isProjected ? '已匯入行程' : '待匯入靈感';
+    // 🚀 4. 視覺狀態對焦：將持久化狀態焊接至 CSS
+    // 💡 職人提醒：若已選取，強制注入 .selected 類別與粉色發光邊框
+    const selectionClass = isStaged ? 'selected border-pink-200 bg-pink-50/30' : 'border-slate-50';
+    const stateStyles = isProjected ? 'ring-2 ring-pink-50 shadow-sm' : `hover:shadow-md cursor-pointer ${selectionClass}`;
     
-    // 💡 職人對焦：待匯入狀態強制採信 text-slate-900 達成最高視認性
-    const statusColor = isProjected ? 'theme-text-pink' : 'text-slate-900';
+    const statusText = isProjected ? '已匯入行程' : (isStaged ? '已選取 (待投射)' : '待匯入靈感');
+    const statusColor = (isProjected || isStaged) ? 'theme-text-pink' : 'text-slate-900';
 
-    // 🚀 4. 標籤物理歸一協定 (高度鎖定 28px)
+    // 🚀 5. 標籤物理歸一協定 (高度鎖定 28px)
     const tagBaseClass = "h-7 px-2.5 flex items-center justify-center rounded-lg text-[12px] italic font-black uppercase tracking-wider shadow-sm transition-all";
     const tagTextColor = "text-slate-600";
 
     return `
-        <div class="backlog-card group relative bg-white p-7 rounded-[2.5rem] active:scale-[0.98] transition-all border border-slate-50 ${stateStyles}" 
+        <div class="backlog-card group relative bg-white p-7 rounded-[2.5rem] active:scale-[0.98] transition-all border ${stateStyles}" 
              id="card-${item.id}" 
              onclick="viewEngine.toggleBacklogSelect('${item.id}')">
             
-            <!-- 🚀 選擇/鎖定指示器 -->
-            <div class="select-indicator absolute top-7 left-7 w-7 h-7 rounded-full border-2 border-slate-100 flex items-center justify-center transition-all bg-white z-10">
-                <div class="w-3.5 h-3.5 rounded-full theme-bg transition-all scale-0 shadow-sm shadow-pink-200"></div>
+            <!-- 🚀 選擇指示器：根據 isStaged 狀態強制同步物理縮放 -->
+            <div class="select-indicator absolute top-7 left-7 w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all bg-white z-10 ${isStaged ? 'theme-bg border-transparent' : 'border-slate-100'}">
+                <div class="w-3.5 h-3.5 rounded-full theme-bg transition-all shadow-sm shadow-pink-200 ${isStaged ? 'scale-100' : 'scale-0'}"></div>
             </div>
 
             <div class="pl-12 space-y-3">
@@ -4339,7 +4423,7 @@ _renderBacklogCard(item) {
                         ${item.category || '食'}
                     </div>
                     
-                    <!-- 🚀 Dn 匯聚標籤：顯示該靈感在行程中出現的所有天數 -->
+                    <!-- Dn 匯聚標籤 -->
                     <div class="flex gap-2">
                         ${(projectedDays).map(day => `
                             <div class="${tagBaseClass} bg-slate-100 ${tagTextColor} border border-slate-200/50">
@@ -4361,7 +4445,7 @@ _renderBacklogCard(item) {
                         <span class="text-[12px] font-black text-slate-500 tracking-wide">${item.city}</span>
                     </div>
                     
-                    <div class="flex items-center gap-1.5 transition-opacity ${isProjected ? 'opacity-100' : 'opacity-30'}">
+                    <div class="flex items-center gap-1.5 transition-opacity ${ (isProjected || isStaged) ? 'opacity-100' : 'opacity-30'}">
                         <span class="text-[12px] font-black italic tracking-[0.1em] ${statusColor}">
                             ${statusText}
                         </span>
@@ -4369,7 +4453,7 @@ _renderBacklogCard(item) {
                 </div>
             </div>
             
-            <!-- 🚀 操作按鈕軌道 -->
+            <!-- 操作按鈕軌道 -->
             <div class="absolute right-6 bottom-6 flex gap-2 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
                 <button onclick="event.stopPropagation(); App.editBacklogItem('${item.id}')" 
                         class="w-10 h-10 bg-slate-800 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all hover:bg-slate-700">
@@ -4388,7 +4472,6 @@ _renderBacklogCard(item) {
         </div>`;
 },
 
-
 /** 🧪 [Sub-Component] 渲染懸浮投射按鈕 (FAB) - 徹底封殺幽靈體感版 */
 _renderBacklogFAB() {
     return `
@@ -4399,61 +4482,119 @@ _renderBacklogFAB() {
                 <span class="text-lg">🏭</span>
                 <span id="select-count">已選取 0 項</span>
                 <span class="opacity-50">|</span>
-                <span>精煉投射</span>
+                <span>轉換行程</span>
             </button>
         </div>`;
 },
 
 
-/** 🔄 [Refinery-Internal] 切換選取狀態與物理反饋 */
+/** 🔄 [Refinery-Internal] 切換選取狀態與物理反饋 (V2026.ULTRA 物理強固版) */
 toggleBacklogSelect(id) {
+    // 🚀 1. 物理定位
     const card = document.getElementById(`card-${id}`);
     if (!card) return;
 
-    const isActive = card.classList.toggle('selected');
-    const indicator = card.querySelector('.select-indicator');
-    const dot = indicator.querySelector('div');
-
-    if (isActive) {
-        card.classList.replace('border-slate-100', 'border-pink-200');
-        card.classList.add('bg-pink-50/30');
-        indicator.classList.replace('border-slate-100', 'theme-bg');
-        dot.classList.replace('scale-0', 'scale-100');
-    } else {
-        card.classList.replace('border-pink-200', 'border-slate-100');
-        card.classList.remove('bg-pink-50/30');
-        indicator.classList.replace('theme-bg', 'border-slate-100');
-        dot.classList.replace('scale-100', 'scale-0');
+    // 🚀 2. 數據主權：執行原子切換
+    // 💡 職人診斷：直接透過全域/導入的 backlogManager 執行數據固化
+    let isStaged = false;
+    if (typeof backlogManager !== 'undefined') {
+        isStaged = backlogManager.toggleSelection(id);
     }
 
-    // 🚀 更新 FAB 狀態
-    this.updateRefineryFAB();
+    // 🚀 3. 視覺熱焊接：根據 isStaged 真值「強行強制」設定 UI 樣式
+    // 💡 職人提醒：徹底廢除 classList.toggle，改用 add/remove 確保視覺絕對服從數據
+    const indicator = card.querySelector('.select-indicator');
+    const dot = indicator?.querySelector('div');
+
+    if (isStaged) {
+        // 狀態 A：選取導通
+        card.classList.add('selected', 'bg-pink-50/30');
+        card.classList.replace('border-slate-50', 'border-pink-200');
+        card.classList.replace('border-slate-100', 'border-pink-200');
+        
+        if (indicator) {
+            indicator.classList.remove('border-slate-100', 'bg-white');
+            indicator.classList.add('theme-bg', 'border-transparent');
+        }
+        if (dot) dot.classList.replace('scale-0', 'scale-100');
+    } else {
+        // 狀態 B：選取斷路
+        card.classList.remove('selected', 'bg-pink-50/30');
+        card.classList.replace('border-pink-200', 'border-slate-50');
+        
+        if (indicator) {
+            indicator.classList.remove('theme-bg', 'border-transparent');
+            indicator.classList.add('border-slate-100', 'bg-white');
+        }
+        if (dot) dot.classList.replace('scale-100', 'scale-0');
+    }
+
+    // 🚀 4. 更新 FAB 狀態
+    // 💡 職人診斷：放棄依賴 this，改用明確的 viewEngine 參照確保導通
+    if (viewEngine && typeof viewEngine.updateRefineryFAB === 'function') {
+        viewEngine.updateRefineryFAB();
+    }
+    
     if (navigator.vibrate) navigator.vibrate(5);
 },
 
-/** 📊 [加固版] 更新投射按鈕狀態 */
+
+/** 📊 [加固版] 更新投射按鈕與掃帚數字 (V2026.ULTRA 聯動對焦) */
 updateRefineryFAB() {
+    // 🚀 1. 定位物理節點：包含底部 FAB 與頂部掃帚 Badge
     const fab = document.getElementById('refinery-fab');
-    if (!fab) return; // 🛡️ 沒找到節點就靜默斷路，不准噴 Error
-
-    const selectedCards = document.querySelectorAll('.backlog-card.selected');
     const selectCountEl = document.getElementById('select-count');
+    const badge = document.getElementById('selection-badge-count');
+    const managerBtn = document.getElementById('btn-selection-manager');
 
-    if (selectedCards.length > 0) {
-        // 🚀 導通狀態：升起並啟用
-        fab.style.transform = 'translateY(0)';
-        fab.style.opacity = '1';
-        fab.style.pointerEvents = 'auto';
-        if (selectCountEl) {
-            selectCountEl.innerText = `已選取 ${selectedCards.length} 項`;
+    // 🛡️ 靜默熔斷：若關鍵容器尚未掛載，則中斷程序
+    if (!fab && !badge) return;
+
+    // 🚀 2. 提領最新真值：跨模組嗅探數據實體
+    const manager = window.backlogManager || (typeof backlogManager !== 'undefined' ? backlogManager : null);
+    const selectionSize = manager?._stagedSelection?.size || 0;
+
+    // 🚀 3. 同步底部 FAB (投射泡泡)
+    if (fab && selectCountEl) {
+        if (selectionSize > 0) {
+            // 狀態 A：導通升起
+            fab.style.transform = 'translateY(0)';
+            fab.style.opacity = '1';
+            fab.style.pointerEvents = 'auto';
+            selectCountEl.innerText = `已選取 ${selectionSize} 項`;
+        } else {
+            // 狀態 B：沉降隱藏
+            fab.style.transform = 'translateY(160px)';
+            fab.style.opacity = '0';
+            fab.style.pointerEvents = 'none';
         }
-    } else {
-        // 🚀 斷路狀態：沉降至視界外 (加大位移確保徹底消失)
-        fab.style.transform = 'translateY(160px)'; 
-        fab.style.opacity = '0';
-        fab.style.pointerEvents = 'none';
     }
+
+    // 🚀 4. 同步頂部掃帚 (Manager Badge)
+    // 💡 職人診斷：直接操作 ClassList 與 InnerText，封殺 F5 延遲
+    if (badge && managerBtn) {
+        badge.innerText = selectionSize;
+        
+        if (selectionSize > 0) {
+            // 亮起：執行放大與顯影動畫
+            badge.classList.replace('scale-0', 'scale-100');
+            badge.classList.replace('opacity-0', 'opacity-100');
+            
+            // 活化按鈕：切換至主色調視覺
+            managerBtn.className = "w-10 h-10 rounded-2xl flex items-center justify-center border transition-all active:scale-90 relative bg-white text-rose-500 border-rose-100 shadow-sm";
+        } else {
+            // 熄滅：執行縮小與隱藏
+            badge.classList.replace('scale-100', 'scale-0');
+            badge.classList.replace('opacity-100', 'opacity-0');
+            
+            // 降壓按鈕：回歸灰色靜置狀態
+            managerBtn.className = "w-10 h-10 rounded-2xl flex items-center justify-center border transition-all active:scale-90 relative bg-slate-50 text-slate-300 border-slate-100 opacity-50";
+        }
+    }
+    
+    console.log(`📡 [UI-Sync] 選取路網對焦完畢 | 規模: ${selectionSize}`);
 },
+
 
 /** 🚀 [Refinery-Main] 觸發精煉中繼程序 (V2026.ULTRA V2.0 版) */
 triggerProjection() {
@@ -4469,7 +4610,7 @@ triggerProjection() {
     // 🚀 核心導通：呼叫重構後的內容生成器
     const content = this._renderRefineryStation(primaryCity, idsJson);
 
-    modalEngine.create('refinery-station-modal', '🏭 原子精煉中繼站', content, '');
+    modalEngine.create('refinery-station-modal', '🏭 靈感轉行程中繼站', content, '');
     
     // 💡 點火初始化模式
     requestAnimationFrame(() => {

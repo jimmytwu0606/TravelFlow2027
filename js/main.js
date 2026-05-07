@@ -324,21 +324,32 @@ case 'training':
             viewEngine.renderSettings(container, activeSettingsTab);
             break;
 
-        // 🏭 10. 精煉路網：備選行程精煉廠
+// 🏭 10. 精煉路網：備選行程精煉廠 (V2026.ULTRA 狀態對焦版)
         case 'backlog':
-            // 🚀 關鍵修正：進入精煉廠前先強制抹除所有 UI 泡泡殘留
+            // 🚀 核心修正 0：物理抹除 UI 殘留，確保視覺純淨度
             if (window.uiManager && uiManager.showToast) {
                 const toast = document.getElementById('global-ui-toast') || document.getElementById('ui-toast');
                 if (toast) toast.remove();
             }
 
-            // 1. 從磁區提取數據
+            // 🚀 核心修正 1：數據提取
+            // 💡 職人診斷：loadAll 內部已包含 window 全域掛載與初步 Getter 觸發
             const backlogItems = await backlogManager.loadAll();
             
-            // 2. 執行渲染
-            // 💡 職人提醒：確保 renderBacklogPage 內部不再觸發任何 App.filterByCity 之類的 Toast 邏輯
+            // 🚀 核心修正 2：【關鍵焊接】強制選取狀態對焦
+            // 💡 職人診斷：解決「網頁重整後選取消失」的最後一道防線
+            // 在 render 前確保物理磁區 (LocalStorage) 已成功回流至記憶體實體 (Set)
+            if (window.backlogManager && typeof backlogManager.syncFAB === 'function') {
+                backlogManager.syncFAB(); 
+            }
+
+            // 🚀 核心修正 3：執行渲染
+            // 💡 職人提醒：renderBacklogPage 現在將獲得 100% 導通的選取狀態進行小卡顯影
             viewEngine.renderBacklogPage(container, backlogItems);
+            
+            console.log(`📡 [View-Direct] 精煉廠磁區已點火 | 燃料: ${backlogItems.length} | 狀態: 鎖定`);
             break;
+
 
         default:
             // 🚀 萬用反射軌道
@@ -2205,53 +2216,76 @@ async saveScheduleData(tripId, dayIndex, itemIndex) {
 /** 🧬 [Sub-Logic] 任務 A：物理層數據採集與洗滌 (V2026.ULTRA 視覺優先版) */
 _captureScheduleFormData() {
     const style = document.getElementById('sched-style')?.value || "default";
-    const editMode = localStorage.getItem('tf_editor_mode') || 'visual'; // 🚀 模式感應
-    
-    // 1. 核心燃料預洗 (優先提領，作為數據真值來源)
+    const editMode = localStorage.getItem('tf_editor_mode') || 'visual';
+
+    // 🚀 1. 核心燃料深層洗滌 (Deep Sanitization)
+    // 💡 職人診斷：除了移除不可見字符，還需封殺雙重轉義的引號，防止 JSON.parse 坍塌
     const rawMemo = (document.getElementById('sched-memo')?.value || "")
         .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\\"/g, '"') 
         .trim();
 
-    // 2. 數據主權對焦
-    let location, time, expense;
+    // 2. 數據主權對焦發動機
+    let location = "", time = "", expense = 0;
 
+    // 🚀 【導通協定】視覺模式優先從燃料內部提領真值
     if (editMode === 'visual' && rawMemo) {
-        // 🚀 【視覺優先軌道】：從已回流的 JSON 燃料中提取最精準的指紋
         try {
             const fuel = JSON.parse(rawMemo);
-            const root = Array.isArray(fuel) ? fuel[0] : (fuel.stops ? fuel.stops[0] : fuel);
             
-            location = root.location || root.task || root.name || "";
-            time = root.time || "";
-            expense = root.expense || "";
+            // 💡 職人診斷：穿透多態結構 (Itinerary 陣列 / Transport 物件 / Shopping 陣列)
+            let root = null;
+            if (Array.isArray(fuel)) {
+                root = fuel[0];
+            } else if (fuel && typeof fuel === 'object') {
+                // 針對交通路網，優先取 stops 的第一站時間，但地點取 operator 或總覽
+                root = (fuel.stops && fuel.stops.length > 0) ? fuel.stops[0] : fuel;
+            }
+
+            if (root) {
+                // 地點主權：優先級 task > location > name > (若是交通則採連字格式)
+                if (style === 'transport' && fuel.stops) {
+                    const start = fuel.stops[0]?.name || "";
+                    const end = fuel.stops[fuel.stops.length - 1]?.name || "";
+                    location = (start && end) ? `${start} → ${end}` : (fuel.operator || "");
+                } else {
+                    location = root.task || root.location || root.name || "";
+                }
+                
+                time = root.time || "";
+                // 費用洗滌：確保轉為純數字
+                const rawExp = root.expense || root.cost || 0;
+                expense = typeof rawExp === 'string' ? Number(rawExp.replace(/[^0-9]/g, '')) : rawExp;
+            }
         } catch (e) {
-            // 降級處理：若 JSON 損毀則回歸零件採樣
+            console.warn("⚠️ [Capture-Warp] 燃料解析異常，回退至零件採樣軌道");
             location = document.getElementById('sched-location')?.value.trim();
             time = document.getElementById('sched-time')?.value;
         }
-    } else {
-        // 🚀 【零件優先軌道】：代碼模式或初始狀態
-        location = document.getElementById('sched-location')?.value.trim();
-        time = document.getElementById('sched-time')?.value;
-    }
+    } 
+    
+    // 🚀 零件補償協定：若燃料內無值或處於代碼模式，採信 UI 輸入框
+    if (!location) location = document.getElementById('sched-location')?.value.trim();
+    if (!time) time = document.getElementById('sched-time')?.value || "";
 
-    // 3. 補償與封裝
-    const finalLocation = location || (style === 'shopping' ? '購物行程' : '新景點');
-    const imageUrl = document.getElementById('sched-image-data')?.value || "";
+    // 3. 物理補償與封裝
+    // 💡 職人診斷：確保地點具備物理占位符，封殺「無標題小卡」導致的渲染崩潰
+    const finalLocation = location || (style === 'shopping' ? '未命名購物清單' : '新行程節點');
+    const imageUrl = document.getElementById('node-image-url')?.value || ""; // 修正 ID 對應 image 模式
     const hubReturn = document.getElementById('hub-return-toggle')?.checked || false;
 
-    console.log(`📡 [Capture-Ready] Mode: ${style} | Priority: ${editMode === 'visual' ? 'Fuel-Core' : 'Input-Field'}`);
+    console.log(`📡 [Capture-Ready] 模式: ${style} | 對焦主權: ${editMode === 'visual' ? 'Fuel-Core' : 'UI-Field'}`);
 
     return {
         style,
         location: finalLocation,
-        time: time || "",
+        time: time,
+        expense, // 新增費用軌道，供後續金融路網累算
         imageUrl,
         hubReturn,
         rawMemo
     };
 },
-
 
 /** 🧬 [Sub-Logic] 任務 B：語義加工發動機 (全量分流對焦版) */
 _processNodeStorageByStyle(data) {
@@ -2791,6 +2825,27 @@ ${hubAnchor}3. 終點：${end} (seg: ${maxSegIndex})
     }
 },
 
+
+// ============
+//   精煉複製
+// ============
+
+/** 🏭 [Refinery-Acoustic] 精煉廠專屬直通總線 (V2026.ULTRA) 
+ * 作用：封殺單筆替換邏輯，確保多筆燃料 100% 導通
+ */
+copyRefineryDirect(text) {
+    if (!navigator.clipboard) return uiManager.showToast("❌ 剪貼簿存取受阻");
+
+    // 🚀 物理直通：不經過解碼、不經過 replace，直接點火寫入
+    navigator.clipboard.writeText(text).then(() => {
+        // 職人級反饋
+        uiManager.showToast('✨', '精煉指令全量導通');
+        if (navigator.vibrate) navigator.vibrate(15);
+        console.log("🏁 [Acoustic-Express] 精煉燃料已繞過主總線，成功送達剪貼簿");
+    }).catch(err => {
+        console.error("❌ [Acoustic-Express-Collapse]", err);
+    });
+},
 
 // ============================================================
 // 緊急頁面相關模組
@@ -4320,6 +4375,22 @@ finalizeChallenge(results = []) {
 // ============================================================
 //       靈感匯聚相關模組
 // ============================================================
+
+
+/** 🚀 [App-Core] 導通選取管理執行緒 (V2026.ULTRA 內嵌版) */
+    openSelectionManager() {
+        console.log("📡 [UI-Ignition] 啟動選取管理矩陣...");
+        
+        // 1. 從 viewEngine 提領 HTML 燃料 (確保視圖引擎已導通)
+        const content = viewEngine._renderSelectionManagerContent();
+        const actions = viewEngine._renderSelectionManagerActions();
+        
+        // 2. 透過模態框發動機噴發介面
+        // 💡 職人提醒：在物件內部，this 會自動指向 App 實體，確保 modalCreate 成功點火
+        this.modalCreate('selection-manager-modal', '🧹 已選靈感管理', content, actions);
+        
+        if (navigator.vibrate) navigator.vibrate(10);
+    },
 
 /** 🧬 [Private] 執行 AI 燃料降維與節點焊接 */
 _refineAiFuelToNodes(nodesArray, mode) {
@@ -6078,7 +6149,7 @@ App.projectBacklogToTrip = async (idsJson, dayIndex) => {
 };
 
 
-/** 🚀 [Refinery-Core] 執行精煉投射 (V2026.ULTRA 職責解耦版) */
+/** 🚀 [Refinery-Core] 執行精煉投射 (V2026.ULTRA 持久化回收版) */
 App.executeRefineryProjection = async (idsJson, dayIndex) => {
     const rawJson = document.getElementById('refinery-json-input')?.value.trim();
     const activeTripId = state.activeTripId;
@@ -6101,7 +6172,6 @@ App.executeRefineryProjection = async (idsJson, dayIndex) => {
         await App.persistState(trip);
 
         // 🚀 4. 靈感主權標記 (Backlog Status Update)
-        // 💡 職人提醒：改用 Promise.all 提升導通速度
         await Promise.all(ids.map(async (id) => {
             const backlog = await dbManager.get(dbManager.STORES.BACKLOG, id);
             if (backlog) {
@@ -6110,17 +6180,27 @@ App.executeRefineryProjection = async (idsJson, dayIndex) => {
             }
         }));
 
-        // 🚀 5. 視圖熱重連：安全性判斷
+        // 🚀 5. 選取磁區回收 (CRITICAL FIX)
+        // 💡 職人診斷：投射成功後，應立即釋放緩存磁區，防止重複投射
+        if (typeof backlogManager !== 'undefined' && backlogManager.clearSelection) {
+            backlogManager.clearSelection();
+            console.log(`🧹 [Refinery-Recycle] 已釋放 ${ids.length} 單位選取緩存`);
+        }
+
+        // 🚀 6. 視圖熱重連與狀態更新
         modalEngine.remove('refinery-station-modal');
         uiManager.showToast('✨', `已精煉投射至 D${dayIndex + 1}`);
 
-        // 💡 診斷修正：動態定位內容容器，防止 null 引用報錯
+        // 💡 狀態補償：強制更新 FAB 視圖 (使其消失)
+        if (viewEngine.updateRefineryFAB) viewEngine.updateRefineryFAB();
+
+        // 數據重繪
         const mainContent = document.getElementById('content-container') || document.getElementById('main-content');
         if (mainContent) {
             const allBacklogs = await dbManager.getAll(dbManager.STORES.BACKLOG);
             viewEngine.renderBacklogPage(mainContent, allBacklogs);
         } else {
-            App.navigateTo('backlog'); // 備援路網
+            App.navigateTo('backlog'); 
         }
 
     } catch (e) {
@@ -6128,6 +6208,7 @@ App.executeRefineryProjection = async (idsJson, dayIndex) => {
         uiManager.showToast('⚠️', '磁區對焦異常');
     }
 };
+
 
 /** ↺ [Refinery-Action] 強制重新探測與磁區校準 */
 App.probeRefineryStatus = () => {
@@ -6146,32 +6227,52 @@ App.probeRefineryStatus = () => {
 // 4. 開放外部注入備選燃料
 App.importBacklogFuel = () => backlogManager.importFuel();
 
-/** 🏭 [Refinery-Logic] 執行多維度過濾與分頁切片 */
+/** 🏭 [Refinery-Logic] 執行多維度過濾與分頁切片 (V2026.ULTRA 引用加固版) */
 App.getFilteredBacklogs = (allBacklogs) => {
+    // 0. 🛡️ 數據防禦
+    if (!allBacklogs) return { pagedItems: [], totalPages: 1, currentPage: 1, totalItems: 0 };
+
     const activeCity = localStorage.getItem('tf_backlog_city_focus') || '全部';
     const activeCat = localStorage.getItem('tf_backlog_cat_focus') || '全部';
-    const query = state.backlogContext.searchQuery.toLowerCase().trim();
+    const context = state.backlogContext;
+    const query = (context.searchQuery || "").toLowerCase().trim();
 
-    // 🚀 1. 執行三維交叉過濾
+    // 🚀 1. 執行三維交叉過濾 (保持對象引用一致)
     const filtered = allBacklogs.filter(item => {
+        // 💡 職人診斷：確保 item.id 存在，這是 Set 比對的核心基因
+        if (!item.id) return false; 
+
         const cityMatch = activeCity === '全部' || item.city === activeCity;
         const catMatch = activeCat === '全部' || item.category === activeCat;
         const searchMatch = !query || item.name.toLowerCase().includes(query);
         return cityMatch && catMatch && searchMatch;
     });
 
-    // 🚀 2. 計算分頁數據
+    // 🚀 2. 分頁計算與邊界保護
+    const perPage = context.perPage || 10;
     const totalItems = filtered.length;
-    const totalPages = Math.ceil(totalItems / state.backlogContext.perPage) || 1;
+    const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
     
-    // 防呆：若當前頁碼超過總頁數（例如過濾後變少），強制回歸第一頁
-    if (state.backlogContext.page > totalPages) state.backlogContext.page = 1;
+    // 🚀 3. 頁碼自癒協定
+    // 💡 職人提醒：若過濾後的結果不足以撐起當前頁碼，執行導正
+    let currentPage = context.page;
+    if (currentPage > totalPages) {
+        currentPage = 1;
+        state.backlogContext.page = 1; // 同步回寫全域狀態
+    }
 
-    const start = (state.backlogContext.page - 1) * state.backlogContext.perPage;
-    const pagedItems = filtered.slice(start, start + state.backlogContext.perPage);
+    const start = (currentPage - 1) * perPage;
+    const pagedItems = filtered.slice(start, start + perPage);
 
-    return { pagedItems, totalPages, currentPage: state.backlogContext.page, totalItems };
+    // 🚀 4. 輸出標準原子包
+    return { 
+        pagedItems, 
+        totalPages, 
+        currentPage, 
+        totalItems 
+    };
 };
+
 
 /** 🔍 [Refinery-Logic] 關鍵字檢索 (防抖優化版) */
 App.searchBacklog = (query) => {
@@ -6208,40 +6309,93 @@ App.setBacklogPage = (p) => {
 // 🏭 備選精煉廠過濾中心 (Refinery Filter Center)
 // ============================================================
 
-/** 🚀 城市區域過濾代理：物理對焦強化版 (V2026.ULTRA 精確補償版) */
-App.filterBacklogByCity = (city) => {
+/** 🚀 城市區域過濾代理：物理對焦強化版 (V2026.ULTRA 狀態同步版) */
+App.filterBacklogByCity = async (city) => {
+    // 0. 💾 物理磁區標記
     localStorage.setItem('tf_backlog_city_focus', city);
+    
+    // 🚀 1. 頁碼歸零協定
+    if (state.backlogContext) {
+        state.backlogContext.page = 1;
+    }
+
     if (navigator.vibrate) navigator.vibrate(8);
 
-    // 1. 執行視圖熱更新
+    // 🚀 2. 【核心加固】數據守門員協定
+    // 💡 職人診斷：等待 IndexedDB 數據導通，防止渲染引擎空轉
+    if (window.backlogManager && typeof window.backlogManager.loadAll === 'function') {
+        await window.backlogManager.loadAll(); 
+    }
+
+    // 3. 執行視圖熱更新
     App.navigateTo('backlog');
 
-    // 🚀 2. 核心補強：導入時序補償，封殺置中偏移
+    // 🚀 4. 物理補償與狀態廣播
     const currentCat = localStorage.getItem('tf_backlog_cat_focus') || '全部';
     
-    // 💡 職人診斷：確保對焦指令發生在渲染引擎完成分頁計算後的下一脈衝
+    // 💡 職人診斷：增加至 100ms 補償，確保 DOM 重畫完畢後再執行選取狀態顯影
     setTimeout(() => {
-        viewEngine.focusBacklogTabs(city, currentCat);
-    }, 0);
+        // A. 區域標籤物理置中
+        if (viewEngine && viewEngine.focusBacklogTabs) {
+            viewEngine.focusBacklogTabs(city, currentCat);
+        }
+
+        // 🚀 B. 【關鍵焊接】呼叫 Manager 執行狀態手動點火
+        // 💡 職人診斷：解決「切換 Tab 後泡泡視窗消失」的最後一哩路
+        // 確保視圖層重畫後，立即從數據層抓回物理磁區的選取數量
+        if (window.backlogManager && typeof window.backlogManager.syncFAB === 'function') {
+            backlogManager.syncFAB();
+        } else if (viewEngine && viewEngine.updateRefineryFAB) {
+            // 備援方案：若 syncFAB 未定義則執行基礎刷新
+            viewEngine.updateRefineryFAB();
+        }
+    }, 100); 
     
-    console.log(`📡 [Backlog-Filter] 區域磁區對焦完成: ${city}`);
+    console.log(`📡 [Backlog-Filter] 區域磁區對焦完成: ${city} | FAB Synced`);
 };
 
-/** 🚀 屬性分類過濾代理：語義對焦強化版 (V2026.ULTRA 精確補償版) */
-App.filterBacklogByCat = (cat) => {
+
+/** 🚀 屬性分類過濾代理：語義對焦強化版 (V2026.ULTRA 狀態同步版) */
+App.filterBacklogByCat = async (cat) => {
+    // 0. 💾 物理磁區標記
     localStorage.setItem('tf_backlog_cat_focus', cat);
+    
+    // 🚀 1. 頁碼歸零協定
+    if (state.backlogContext) {
+        state.backlogContext.page = 1;
+    }
+
     if (navigator.vibrate) navigator.vibrate(8);
 
+    // 🚀 2. 【核心加固】數據守門員協定
+    // 💡 職人診斷：強制等待資料加載，確保渲染時磁區燃料已對位
+    if (window.backlogManager && typeof window.backlogManager.loadAll === 'function') {
+        await window.backlogManager.loadAll(); 
+    }
+
+    // 3. 執行視圖熱更新
     App.navigateTo('backlog');
 
-    // 🚀 2. 核心補強：導入時序補償
+    // 🚀 4. 物理補償與狀態廣播
     const currentCity = localStorage.getItem('tf_backlog_city_focus') || '全部';
     
+    // 💡 職人診斷：時序拉開至 100ms，封殺異步渲染導致的 FAB 點火失敗
     setTimeout(() => {
-        viewEngine.focusBacklogTabs(currentCity, cat);
-    }, 0);
+        // A. 屬性標籤物理置中
+        if (viewEngine && viewEngine.focusBacklogTabs) {
+            viewEngine.focusBacklogTabs(currentCity, cat);
+        }
+
+        // 🚀 B. 【關鍵焊接】呼叫 Manager 執行狀態手動點火
+        // 💡 職人診斷：取代單純的 viewEngine 刷新，改由數據層主動回溯並廣播
+        if (window.backlogManager && typeof window.backlogManager.syncFAB === 'function') {
+            backlogManager.syncFAB();
+        } else if (viewEngine && viewEngine.updateRefineryFAB) {
+            viewEngine.updateRefineryFAB();
+        }
+    }, 100); 
     
-    console.log(`📡 [Backlog-Filter] 屬性磁區對焦完成: ${cat}`);
+    console.log(`📡 [Backlog-Filter] 屬性磁區對焦完成: ${cat} | Data Protected`);
 };
 
 
