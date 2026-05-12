@@ -53,80 +53,103 @@ export const uiManager = {
         if (display) display.textContent = `${scale}%`;
     },
 
-/** 🛰️ 軌道 D：職人級氣泡通知 (V2026.ULTRA 終極層級加固版) */
+/** 🛰️ 軌道 D：職人級氣泡通知 (V2026.ULTRA 語義配色升級版) */
 showToast(icon = '💡', message = '', duration = 3000, options = {}) {
     let finalIcon = icon;
     let finalMsg = message;
 
-    // 🚀 核心自癒：處理單軌參數（封殺 undefined）
     if (!message && icon) {
         finalMsg = icon;
         finalIcon = '✨';
     }
 
-    // 1. 🚀 物理清理：封殺殘留氣泡，維持磁區純淨
+    // 🚀 語義配色對照表
+    const semanticMap = {
+        '✅': { bg: '#EAF3DE', border: '#C0DD97', iconBg: '#3B6D11', textColor: '#27500A', subColor: '#3B6D11', tiIcon: 'ti-check' },
+        '✨': { bg: '#FBEAF0', border: '#F4C0D1', iconBg: '#D4537E', textColor: '#4B1528', subColor: '#D4537E', tiIcon: 'ti-sparkles' },
+        '❌': { bg: '#FCEBEB', border: '#F09595', iconBg: '#A32D2D', textColor: '#501313', subColor: '#A32D2D', tiIcon: 'ti-x' },
+        '💥': { bg: '#FCEBEB', border: '#F09595', iconBg: '#A32D2D', textColor: '#501313', subColor: '#A32D2D', tiIcon: 'ti-alert-circle' },
+        '⚠️': { bg: '#FAEEDA', border: '#FAC775', iconBg: '#854F0B', textColor: '#412402', subColor: '#854F0B', tiIcon: 'ti-alert-triangle' },
+        '🚨': { bg: '#FAEEDA', border: '#FAC775', iconBg: '#854F0B', textColor: '#412402', subColor: '#854F0B', tiIcon: 'ti-alert-triangle' },
+        '📡': { bg: '#E6F1FB', border: '#85B7EB', iconBg: '#185FA5', textColor: '#042C53', subColor: '#185FA5', tiIcon: 'ti-wifi' },
+        '📶': { bg: '#FAEEDA', border: '#FAC775', iconBg: '#854F0B', textColor: '#412402', subColor: '#854F0B', tiIcon: 'ti-wifi-off' },
+        '🔒': { bg: '#FAEEDA', border: '#FAC775', iconBg: '#854F0B', textColor: '#412402', subColor: '#854F0B', tiIcon: 'ti-lock' },
+        '🔑': { bg: '#FAEEDA', border: '#FAC775', iconBg: '#854F0B', textColor: '#412402', subColor: '#854F0B', tiIcon: 'ti-key' },
+        '🚀': { bg: '#E6F1FB', border: '#85B7EB', iconBg: '#185FA5', textColor: '#042C53', subColor: '#185FA5', tiIcon: 'ti-rocket' },
+        '💾': { bg: '#E6F1FB', border: '#85B7EB', iconBg: '#185FA5', textColor: '#042C53', subColor: '#185FA5', tiIcon: 'ti-device-floppy' },
+        '🎯': { bg: '#FBEAF0', border: '#F4C0D1', iconBg: '#D4537E', textColor: '#4B1528', subColor: '#D4537E', tiIcon: 'ti-target' },
+        '💡': { bg: '#E6F1FB', border: '#85B7EB', iconBg: '#185FA5', textColor: '#042C53', subColor: '#185FA5', tiIcon: 'ti-bulb' },
+    };
+
+    const style = semanticMap[finalIcon] || {
+    bg: '#FBEAF0', border: '#F4C0D1', iconBg: '#D4537E', textColor: '#4B1528', subColor: '#993556', tiIcon: 'ti-bell'
+};
+
+    // 1. 清理舊泡泡
     const oldToast = document.querySelector('.tf-toast');
     if (oldToast) oldToast.remove();
 
-    // 2. 🚀 構建原子節點
+    // 2. 構建節點
     const toast = document.createElement('div');
     toast.className = 'tf-toast';
-    
-    // 💡 職人樣式：將 Z-Index 焊接至 20000 級別，徹底封殺 10001 的遮擋
+
+    // 訊息分割：支援「標題\n副標題」格式
+    const msgParts = finalMsg.split('\n');
+    const titleText = msgParts[0] || '';
+    const subText = msgParts[1] || options.sub || '';
+
+    const actionHtml = options.onConfirm ? `
+        <button id="toast-confirm-btn"
+                style="margin-left: 4px; background: #E24B4A; color: white; border: none; padding: 6px 14px;
+                       border-radius: 10px; font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0;">
+            ${options.confirmText || '確認'}
+        </button>` : '';
+
     Object.assign(toast.style, {
         position: 'fixed',
-        bottom: '100px', 
+        bottom: '88px',
         left: '50%',
-        transform: 'translateX(-50%) translateY(20px)',
-        // 🚀 關鍵修正：提升至 20000，確保在所有 Modal 之上
-        zIndex: '20000', 
-        backgroundColor: 'rgba(30, 41, 59, 0.98)',
-        color: 'white',
-        padding: '14px 24px',
-        borderRadius: '24px',
+        transform: 'translateX(-50%) translateY(16px)',
+        zIndex: '20000',
+        backgroundColor: style.bg,
+        border: `0.5px solid ${style.border}`,
+        borderRadius: '16px',
+        padding: '12px 16px',
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
-        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
-        backdropFilter: 'blur(12px)',
-        transition: 'all 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28)',
+        transition: 'all 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28)',
         opacity: '0',
-        pointerEvents: 'auto', // 🚀 導通點擊主權
-        whiteSpace: 'nowrap',
-        border: '1px solid rgba(255,255,255,0.1)'
+        pointerEvents: 'auto',
+        minWidth: '220px',
+        maxWidth: '320px',
     });
 
-    // 💡 職人加固：強制寫入 !important 屬性，防止外部 CSS (如 Tailwind) 干擾
     toast.style.setProperty('z-index', '20000', 'important');
     toast.style.setProperty('pointer-events', 'auto', 'important');
 
-    // 🚀 交互焊接：如果具備回調，點亮按鈕
-    const actionHtml = options.onConfirm ? `
-        <button id="toast-confirm-btn" 
-                style="margin-left: 8px; background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 12px; font-size: 10px; font-weight: 900; cursor: pointer; transition: all 0.2s;"
-                onmouseover="this.style.filter='brightness(1.2)'" 
-                onmouseout="this.style.filter='none'">
-            確認切除
-        </button>
-    ` : '';
-
     toast.innerHTML = `
-        <span style="font-size: 16px;">${finalIcon}</span>
-        <span style="font-size: 13px; font-weight: 800;">${finalMsg}</span>
+        <div style="width: 32px; height: 32px; background: ${style.iconBg}; border-radius: 10px;
+                    display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <i class="ti ${style.tiIcon}" style="font-size: 16px; color: white;" aria-hidden="true"></i>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 13px; font-weight: 700; color: ${style.textColor}; margin: 0;
+                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${titleText}</p>
+            ${subText ? `<p style="font-size: 11px; color: ${style.subColor}; margin: 2px 0 0;
+                              white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${subText}</p>` : ''}
+        </div>
         ${actionHtml}
     `;
 
     document.body.appendChild(toast);
 
-    // 3. 🚀 點火噴發 (強制重繪)
-    toast.offsetHeight; 
-
+    toast.offsetHeight;
     requestAnimationFrame(() => {
         toast.style.opacity = '1';
         toast.style.transform = 'translateX(-50%) translateY(0)';
     });
 
-    // 🚀 事件監聽：點擊回調
     if (options.onConfirm) {
         const btn = toast.querySelector('#toast-confirm-btn');
         if (btn) {
@@ -141,14 +164,13 @@ showToast(icon = '💡', message = '', duration = 3000, options = {}) {
 
     if (navigator.vibrate) navigator.vibrate(15);
 
-    // 4. 🚀 自動回收
     setTimeout(() => {
         if (!document.body.contains(toast)) return;
         toast.style.opacity = '0';
-        toast.style.transform = 'translateX(-50%) translateY(-20px)';
+        toast.style.transform = 'translateX(-50%) translateY(-12px)';
         const finalize = () => { if (toast.parentNode) toast.remove(); };
         toast.addEventListener('transitionend', finalize, { once: true });
-        setTimeout(finalize, 500); 
+        setTimeout(finalize, 400);
     }, duration);
 },
 

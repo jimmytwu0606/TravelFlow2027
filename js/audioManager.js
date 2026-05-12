@@ -86,23 +86,73 @@ _executePhysicalPlayback(base64) {
     });
 },
 
-/** 🧪 [Sub-Module 1] 聲學物理洗滌器 (V2026.ULTRA.FINAL_STABLE) */
+/** 🧪 [Sub-Module 1] 聲學物理洗滌器 (V2026.ULTRA.V3.0 精簡版) */
 _sanitizeAcoustic(t) {
     if (!t) return "";
     let clean = String(t);
 
-    clean = clean.replace(/<rt>.*?<\/rt>/g, ""); // 物理切除 Ruby
-    clean = clean.replace(/<[^>]*>/g, "");      // 移除 HTML
-    clean = clean.replace(/[\(（][ぁ-んァ-ヶー\s]+[\)）]/g, ""); // 移除括號注音
+    // 1. HTML 清理
+    clean = clean.replace(/<rt>.*?<\/rt>/g, "");
+    clean = clean.replace(/<[^>]*>/g, "");
 
-    // 🔥 [WELD-POINT] 語流導通：移除引號並封殺助詞前的空格
-    // 💡 職人診斷：這是解決「ノジマ」與「は」斷開的最小干預方案
-    clean = clean.replace(/[「」""''『』]/g, "") // 移除引號防止分詞偏移
-                 .replace(/\s+(?=[はもをにが])/g, ""); // 封殺助詞前的所有空格
+    // 2. 括號處理
+    // 純數字括號（年齡補充）→ 移除，新聞不朗讀
+    clean = clean.replace(/[（(]当時\d+[）)]/g, "");
+    clean = clean.replace(/[（(]\d+[）)]/g, "");
+    // 括號注音 → 移除
+    clean = clean.replace(/[\(（][ぁ-んァ-ヶー\s]+[\)）]/g, "");
 
-    // 🚀 4. 終極除磁
-    clean = clean.replace(/[*_#`]/g, "")
+    // 3. TTS 真的念不好的特殊情況才干預
+
+    // 金額：¥記號 TTS 不認識 → 念出來
+    clean = clean.replace(/[¥￥]([0-9,，]+)/g, (_, num) => {
+        return num.replace(/[,，]/g, '') + '円';
+    });
+
+    // 時間：14:30 → 14時30分（讓 TTS 自己念）
+    clean = clean.replace(/(\d{1,2}):(\d{2})/g, '$1時$2分');
+
+    // 號碼類：逐字念避免 TTS 念成「じゅうさん」→ 直接給假名
+    const numMap = { 0:'ゼロ',1:'いち',2:'に',3:'さん',4:'よん',5:'ご',6:'ろく',7:'なな',8:'はち',9:'きゅう' };
+    clean = clean.replace(/(\d+)(号車|番線|番出口|号室|番地)/g, (_, num, suffix) => {
+        const reading = { '号車':'ごうしゃ','番線':'ばんせん','番出口':'ばんでぐち','号室':'ごうしつ','番地':'ばんち' };
+        return num.split('').map(d => numMap[parseInt(d)] || d).join('') + (reading[suffix] || suffix);
+    });
+
+    // 小數點：80.1% → TTS 念「はちじゅってんいち」會怪，改成漢字讓 TTS 念
+    clean = clean.replace(/(\d+)\.(\d+)/g, (_, int, dec) => `${int}・${dec}`);
+
+    // 4. 英文縮寫：TTS 念英文字母串很卡 → 轉片假名（長的優先）
+    const engMap = {
+        'SDGs':'エスディージーズ', 'OIST':'オイスト', 'WiFi':'ワイファイ',
+        'DNA':'ディーエヌエー', 'GDP':'ジーディーピー', 'WHO':'ダブリューエイチオー',
+        'NPO':'エヌピーオー', 'ATM':'エーティーエム', 'URL':'ユーアールエル',
+        'SNS':'エスエヌエス', 'BGM':'ビージーエム', 'JR':'ジェイアール',
+        'Wi-Fi':'ワイファイ', 'IC':'アイシー', 'QR':'キューアール',
+        'AI':'エーアイ', 'PC':'ピーシー', 'OK':'オーケー', 'ID':'アイディー',
+    };
+    Object.entries(engMap).sort((a, b) => b[0].length - a[0].length).forEach(([eng, jp]) => {
+        clean = clean.replace(new RegExp(`\\b${eng}\\b`, 'g'), jp);
+    });
+
+    // 5. 記號轉換（TTS 不認識的符號）
+    clean = clean
+        .replace(/℃/g, '度')
+        .replace(/％|%/g, 'パーセント')
+        .replace(/→/g, 'から')
+        .replace(/〜|~/g, 'から')
+        .replace(/＝|=/g, 'イコール')
+        .replace(/×/g, 'かける')
+        .replace(/・/g, '、')
+        .replace(/km/g, 'キロ')
+        .replace(/kg/g, 'キロ');
+
+    // 6. 語流清理
+    clean = clean.replace(/[「」""''『』]/g, "")
+                 .replace(/[*_#`【】〔〕［］]/g, "")
+                 .replace(/\s+(?=[はもをにが])/g, "")
                  .replace(/[\u200B-\u200D\uFEFF]/g, "")
+                 .replace(/\s{2,}/g, ' ')
                  .trim();
 
     return clean;
@@ -208,7 +258,8 @@ async speak(input, extActorA = null, extActorB = null) {
             // 🔥 [CRITICAL FIX] 提取人物基因組中的「物理參數」
             // 💡 職人診斷：如果 dna 物件內有參數，優先使用；若無則採系統預設。
             const finalRate = dna.rate || localStorage.getItem('tf_audio_rate') || '1.0';
-            const finalPitch = dna.pitch || '0.0';
+            // pitch 去掉 st 單位再傳給 API
+            const finalPitch = parseFloat(String(dna.pitch || '0').replace('st', '')) || 0.0;
 
             console.log(`📡 正在合成人格: [${dna.name}] ➔ Voice: ${dna.voice} | Pitch: ${finalPitch} | Rate: ${finalRate}`);
 
@@ -225,8 +276,12 @@ async speak(input, extActorA = null, extActorB = null) {
             // 🚀 5. 物理排隊播放
             if (audioContent) {
                 await this._executePhysicalPlayback(audioContent);
-                // 角色交替間的自然呼吸停頓 (調整為 450ms 增加層次感)
-                await new Promise(res => setTimeout(res, 450));
+                // 同角色連說：150ms 微停頓；不同角色交替：450ms 換氣感
+                const nextSeg = segments[segments.indexOf(seg) + 1];
+                const nextRaw = nextSeg ? (nextSeg.text || (Array.isArray(nextSeg) ? nextSeg[0] : nextSeg)) : null;
+                const nextDna = nextRaw ? this._getAcousticIdentity(String(nextRaw), actorA, actorB) : null;
+                const pause = (nextDna && nextDna.name !== dna.name) ? 450 : 150;
+                await new Promise(res => setTimeout(res, pause));
             }
         }
 
@@ -235,7 +290,20 @@ async speak(input, extActorA = null, extActorB = null) {
     } catch (err) {
         if (window.JP_AUDIO_STOP_SIGNAL === true) return;
         console.error("❌ [Audio-Collapse] 執行備援軌道:", err);
-        this._fallbackSpeak(String(input));
+        // 正確萃取純文字，避免 [object Object] 問題
+        let fallbackText = "";
+        if (typeof input === 'string') {
+            fallbackText = input;
+        } else if (Array.isArray(segments) && segments.length > 0) {
+            fallbackText = segments.map(s => {
+                const raw = s.text || (Array.isArray(s) ? s[0] : s) || "";
+                return this._getCleanDialogue(String(raw));
+            }).filter(Boolean).join('。');
+        } else {
+            fallbackText = String(input);
+        }
+        const savedRate = parseFloat(localStorage.getItem('tf_audio_rate') || '0.9');
+        this._fallbackSpeak(fallbackText, savedRate, 0.0);
     }
 },
 
@@ -292,59 +360,97 @@ _prepareAcousticFuel(input, actorA, actorB) {
 
 
 
-/** 🧬 [Identity-Thread] 子函數 A：全量聲學對位器 (V2026.ULTRA.FINAL_STABLE) */
+/** 🧬 [Identity-Thread] 子函數 A：全量聲學對位器 (V2026.ULTRA.V2.2 性別強化版) */
 _getAcousticIdentity(rawText, actorA, actorB) {
-    // 🚀 1. 物理切片：鎖定名字
+    // 🚀 1. 名字切片：支援全形/半形冒號，限前 20 字
     const separatorIndex = rawText.search(/[：:]/);
     let name = "";
     if (separatorIndex !== -1 && separatorIndex < 20) {
-        name = rawText.substring(0, separatorIndex).replace(/[*_#\s]/g, "").trim();
+        name = rawText.substring(0, separatorIndex)
+            .replace(/[*_#\s「」【】〔〕]/g, "")
+            .trim();
     }
 
     // 🛡️ 熔斷：無名狀態回歸系統預設
     if (!name) return { voice: 'ja-JP-Neural2-B', pitch: '0st', rate: '1.0', name: '系統' };
 
-    // 🔥 [WELD-POINT-1] 靈魂優先導通：強制對位 CHARACTER_EGGS 靈魂表
-    // 💡 職人診斷：如果 Eggs 裡有定義，就直接拿走靈魂參數，不要浪費效能算雜湊。
+    // 🚀 2. CHARACTER_EGGS 靈魂優先導通（支援多種模糊匹配格式）
     const eggs = window.CHARACTER_EGGS || {};
-    // 支援模糊匹配（處理 早乙女(職人) 這種帶標籤的 Key）
-    const eggKey = Object.keys(eggs).find(k => k === name || k.startsWith(name + "("));
+    const eggKey = Object.keys(eggs).find(k =>
+        k === name ||                          // 完全匹配
+        k.startsWith(name + "(") ||            // name(標籤) 格式
+        k.startsWith(name + "（") ||           // name（標籤）全形格式
+        k.startsWith(name + " ") ||            // name 空格 格式
+        name.startsWith(k)                     // 名字包含 egg key（處理敬稱）
+    );
     const persona = eggs[eggKey];
 
     if (persona) {
         console.log(`🎯 [Soul-Linked] 靈魂覺醒: ${name} | Voice: ${persona.voice} | Pitch: ${persona.pitch}st`);
         return {
             voice: persona.voice,
-            // 確保 pitch 帶有 st 單位，方便音訊發動機識別
             pitch: String(persona.pitch).includes('st') ? persona.pitch : `${persona.pitch}st`,
-            rate: String(persona.rate),
+            rate: String(persona.rate || '1.0'),
             name: name,
-            traits: persona.traits // 同步導通文字魂
+            traits: persona.traits || []
         };
     }
 
-    // 🚀 2. 獲取真值燃料庫 (從 CONFIG 直接同步)
+    // 🚀 3. actorA / actorB 對位（外部傳入角色優先）
+    if (actorA && name === actorA.name) {
+        return {
+            voice: actorA.voice || 'ja-JP-Neural2-C',
+            pitch: String(actorA.pitch || '0st').includes('st') ? String(actorA.pitch || '0st') : `${actorA.pitch}st`,
+            rate: String(actorA.rate || '1.0'),
+            name: name
+        };
+    }
+    if (actorB && name === actorB.name) {
+        return {
+            voice: actorB.voice || 'ja-JP-Neural2-B',
+            pitch: String(actorB.pitch || '0st').includes('st') ? String(actorB.pitch || '0st') : `${actorB.pitch}st`,
+            rate: String(actorB.rate || '1.0'),
+            name: name
+        };
+    }
+
+    // 🚀 4. 聲池提領
     const allVoices = CONFIG.VOICE_LIST || [];
     const malePool = allVoices.filter(v => v.gender === 'M').map(v => v.id);
     const femalePool = allVoices.filter(v => v.gender === 'F').map(v => v.id);
 
-    // 🚀 3. 性別主權判定
+    // 🚀 5. 性別判定（強化女性漢字庫 + NAME_POOL 雙軌）
+    const femaleKanji = /[子美奈香恵愛理沙紀江優花梨桜麻彩菜里里悠葵澪凛莉加穂咲朱千夏妃姫妙幸雪柚鈴椿茜藍螢栞]/;
+    const maleKanji   = /[郎朗雄男武剛斗翔将太大樹勇海陸凌颯蒼士志功]{1}/;
+
     const pool = window.NAME_POOL || [];
     const poolEntry = pool.find(e => name.includes(e[0]) || e[0].includes(name));
-    const isMan = poolEntry ? (poolEntry[1] === 'm') : (!name.match(/[子美奈香恵愛理沙]/));
 
-    // 🚀 4. 物理模型雜湊 (Model Hashing) - 降級備援軌道
+    let isMan;
+    if (poolEntry) {
+        isMan = poolEntry[1] === 'm';
+    } else if (femaleKanji.test(name)) {
+        isMan = false;
+    } else if (maleKanji.test(name)) {
+        isMan = true;
+    } else {
+        // 最終備援：名字最後一字音讀判定
+        const lastChar = name.slice(-1);
+        isMan = !femaleKanji.test(lastChar);
+    }
+
+    // 🚀 6. 模型雜湊（同名永遠對到同一個聲音）
     const seed = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const targetPool = isMan ? malePool : femalePool;
-    const targetModel = (targetPool.length > 0) 
-        ? targetPool[seed % targetPool.length] 
+    const targetModel = targetPool.length > 0
+        ? targetPool[seed % targetPool.length]
         : (isMan ? 'ja-JP-Chirp3-HD-Algenib' : 'ja-JP-Chirp3-HD-Aoede');
 
-    console.warn(`👤 [Identity-Fallback] 角色 ${name} 不在名單內，執行隨機雜湊。`);
+    console.warn(`👤 [Identity-Fallback] 角色「${name}」未在名單內 | 性別: ${isMan ? '男' : '女'} | 模型: ${targetModel}`);
 
     return {
         voice: targetModel,
-        pitch: '0st', 
+        pitch: '0st',
         rate: '1.0',
         name: name
     };
@@ -403,88 +509,213 @@ _prosodySanitizer(ssml) {
     return ssml.replace(/(<prosody[^>]*>)([^<]*)([、。！？])(<\/prosody>)/g, '$1$2$4$3');
 },
 
-/** 🧪 [Dialogue-Engine] 對話專用精煉引擎 (V2026.ULTRA.ORAL_FLOW) */
+/** 🧪 [Dialogue-Engine] 對話專用精煉引擎 (V2026.ULTRA.V2.2 口語強化版) */
 _runDialogueEngine(content) {
     let ssml = content;
 
-    // 🚀 1. 物理洗滌：移除標籤與換行，確保口語純淨度
+    // 1. 洗滌：先過聲學洗滌器，再移除標籤與換行
+    ssml = this._sanitizeAcoustic(ssml);
     ssml = ssml.replace(/<[^>]*>/g, '').replace(/[\r\n]+/g, ' ').trim();
 
-    // 🚀 2. 語流焊接：封殺助詞後的微停頓 (對話不需要 5ms 斷氣感)
-    // 💡 職人診斷：對話模式下，助詞與後方詞彙應完全導通，維持流暢語速
-    ssml = ssml.replace(/([はもをにが])(?![\n、。のは])/g, '$1');
+    // 2. 語流焊接：封殺助詞前後多餘空格
+    ssml = ssml.replace(/\s+(?=[はもをにがでもへより])/g, '');
+    ssml = ssml.replace(/([はもをにがでもへより])\s+(?!\s)/g, '$1');
 
-    // 🚀 3. 口語句尾優化：です/ます 快速收尾 (不加額外 break)
-    ssml = ssml.replace(/です([。！？\s]|$)/g, '<prosody pitch="-0.6st" rate="105%">です</prosody>$1');
-    ssml = ssml.replace(/ます([。！？\s]|$)/g, '<prosody pitch="-0.4st" rate="105%">ます</prosody>$1');
+    // 3. 口語感嘆詞前加微停頓（讓情緒有落點）
+    const interjections = ['あの', 'えっと', 'ちょっと', 'まあ', 'ねえ', 'うん', 'へえ', 'ふーん', 'そうか', 'なるほど', 'やっぱり', 'やはり'];
+    interjections.forEach(w => {
+        ssml = ssml.replace(new RegExp(`(^|[。！？、\\s])(${w})`, 'g'),
+            `$1<break time="150ms"/>${w}`);
+    });
 
-    // 🚀 4. 對話呼吸校準：縮減標點停頓 (維持對話節奏)
-    // 💡 職人對焦：對話中的句點不需要 800ms 那麼長，500ms 即可達到自然換氣感
+    // 4. 句尾語調分流（口語版，比精煉引擎更輕柔）
+    // 疑問句尾：音調上揚
+    ssml = ssml.replace(/(か|の|かな|かしら)(?=[。？\s」]|$)/g,
+        `<prosody pitch="+1.2st" rate="97%">$1</prosody>`);
+    // 確認/共鳴句尾：微上揚
+    ssml = ssml.replace(/(よね|だよね|ですよね|ますよね|ね|だね|ですね)(?=[。\s」]|$)/g,
+        `<prosody pitch="+0.6st" rate="98%">$1</prosody>`);
+    // 強調句尾：微上揚帶速度
+    ssml = ssml.replace(/(よ|だよ|ですよ|ますよ|わよ|のよ)(?=[。！\s」]|$)/g,
+        `<prosody pitch="+0.4st" rate="103%">$1</prosody>`);
+    // 感嘆/柔和句尾：微降
+    ssml = ssml.replace(/(だわ|のね|かしら|わね)(?=[。\s」]|$)/g,
+        `<prosody pitch="-0.3st" rate="96%">$1</prosody>`);
+    // 正式口語句尾：語調下沉收尾
+    ssml = ssml.replace(/です(?=[。！？\s」]|$)/g,
+        `<prosody pitch="-0.6st" rate="105%">です</prosody>`);
+    ssml = ssml.replace(/ます(?=[。！？\s」]|$)/g,
+        `<prosody pitch="-0.4st" rate="105%">ます</prosody>`);
+    // 口語縮約形
+    ssml = ssml.replace(/じゃん(?=[。！\s」]|$)/g,
+        `<prosody pitch="+0.8st" rate="106%">じゃん</prosody>`);
+    ssml = ssml.replace(/っけ(?=[。？\s」]|$)/g,
+        `<prosody pitch="+1.0st" rate="97%">っけ</prosody>`);
+
+    // 5. 轉折詞擴充（對話版，停頓比精煉引擎短）
+    const connectors = [
+        'ですが', 'ですので', 'けれども', 'だけど', 'でも', 'のに',
+        'それで', 'だから', 'なのに', 'ところが', 'そして', 'それに',
+        'あと', 'それから', 'ちなみに', 'そういえば'
+    ];
+    connectors.forEach(w => {
+        // 前面已有 break 的情況不再重複插入
+        ssml = ssml.replace(new RegExp(`(?<!<break[^>]*/>)(${w})`, 'g'),
+            `<break time="200ms"/>$1<break time="100ms"/>`);
+    });
+
+    // 重複 break 合併（取最大值）
+    ssml = ssml.replace(/(<break time="(\d+)ms"\s*\/>)\s*(<break time="(\d+)ms"\s*\/>)/g, (_, b1, t1, b2, t2) => {
+        return `<break time="${Math.max(parseInt(t1), parseInt(t2))}ms"/>`;
+    });
+
+    // 6. 標點停頓校準（對話版，比精煉引擎短 30%）
     ssml = ssml.replace(/。/g, '。<break time="500ms"/>');
-    ssml = ssml.replace(/[！？]/g, '$&<break time="500ms"/>');
-    ssml = ssml.replace(/、/g, '、<break time="200ms"/>');
+    ssml = ssml.replace(/[！]/g, '！<break time="450ms"/>');
+    ssml = ssml.replace(/[？]/g, '？<break time="450ms"/>');
+    ssml = ssml.replace(/、/g, '、<break time="180ms"/>');
+    ssml = ssml.replace(/…/g, '<break time="400ms"/>');
 
-    // 🚀 5. 邏輯轉折對焦
-    ssml = ssml.replace(/(ですので|けれども|けれども|のに|ですが)/g, '$1<break time="300ms"/>');
+    // 7. 重複 break 去重
+    ssml = ssml.replace(/(<break time="\d+ms"\s*\/>){2,}/g, (match) => {
+        const times = [...match.matchAll(/time="(\d+)ms"/g)].map(m => parseInt(m[1]));
+        const maxTime = Math.max(...times);
+        return `<break time="${maxTime}ms"/>`;
+    });
 
-    return ssml.replace(/\s+/g, ' ').trim();
+    return ssml.replace(/>\s+</g, '><').replace(/\s+/g, ' ').trim();
 },
 
-/** 🧪 [Refinery-Engine] 精煉引擎核心 (V2026.ULTRA.FINAL_STABLE) */
+/** 🧪 [Refinery-Engine] 精煉引擎核心 (V2026.ULTRA.V2.3 學習回饋版) */
 _runRefineryEngine(content) {
     let ssml = content;
     const globalRate = parseFloat(localStorage.getItem('tf_audio_rate') || '0.95');
     const offset = parseInt(localStorage.getItem('tf_long_phrase_offset') || '-10');
     const targetRateStr = Math.round(globalRate * (1 + offset / 100) * 100) + '%';
 
-    // 🚀 1. 物理洗滌：移除舊標籤並處理噪訊
+    // 🚀 0. 讀取學習庫（方案B 回饋）
+    let hotTriggers = [];
+    let dynamicThreshold = 10;
+    try {
+        hotTriggers = JSON.parse(localStorage.getItem('tf_hot_triggers') || '[]');
+        const suggested = parseInt(localStorage.getItem('tf_suggested_threshold') || '10');
+        dynamicThreshold = Math.max(8, Math.min(suggested, 14)); // 限制在 8~14 字之間
+    } catch(e) {}
+
+    // 🚀 1. 物理洗滌
+    ssml = this._sanitizeAcoustic(ssml);
     ssml = ssml.replace(/<[^>]*>/g, '')
                .replace(/[=＝「」]/g, ' ')
                .replace(/\s+/g, ' ').trim();
 
-    // 🚀 2. 注入「音調曲線 (Contour)」
+    // 🚀 2. 轉折詞音調曲線（靜態 + 學習庫動態合併）
     const contour = "(0%, +0st) (40%, +2.2st) (100%, -1.0st)";
-    const connectors = ["但是", "然而", "因此", "所以", "結果", "ですが", "しかし", "そのため", "その結果", "また現在"];
-    connectors.forEach(word => {
-        ssml = ssml.replace(new RegExp(word, 'g'), `<prosody contour="${contour}" rate="102%">${word}</prosody>`);
+    const staticConnectors = [
+        "但是", "然而", "因此", "所以", "結果", "不過", "雖然", "儘管", "即使",
+        "ですが", "しかし", "そのため", "その結果", "また現在",
+        "ところが", "それでも", "にもかかわらず", "つまり", "したがって",
+        "そこで", "それに", "なぜなら", "ただし", "もっとも",
+        "一方", "それとも", "あるいは", "もしくは"
+    ];
+    // 合併學習庫高頻詞（去重）
+    const allConnectors = [...new Set([...staticConnectors, ...hotTriggers])];
+    // 長的優先處理，避免短詞吃掉長詞
+    allConnectors.sort((a, b) => b.length - a.length).forEach(word => {
+        ssml = ssml.replace(
+            new RegExp(word, 'g'),
+            `<prosody contour="${contour}" rate="102%">${word}</prosody><break time="150ms"/>`
+        );
     });
 
-    // 🚀 3. 句尾語義塊鎖定 (Precision Anchor)
-    const tailKeywords = ["ます", "です", "ました", "でした", "なりました", "判明しました", "話しました", "注目しました", "分析しました", "わかります", "問題です"];
+    // 🚀 3. 句尾語義塊鎖定
+    const tailKeywords = [
+        "判明しました", "話しました", "注目しました", "分析しました",
+        "なりました", "ありません", "わかります", "問題です", "ください",
+        "ました", "でした", "ますよね", "だよね", "ですよね",
+        "だろうか", "かしら", "だわ", "のよ", "わよ",
+        "ますね", "ですね", "だね", "だな",
+        "ますよ", "ですよ", "だよ",
+        "かな", "よね",
+        "ます", "です",
+    ];
     tailKeywords.forEach(kw => {
-        const regex = new RegExp(`(${kw})(?=[。！？\\n\\s]|$)`, 'g');
+        const regex = new RegExp(`(${kw})(?=[。！？\\n\\s」]|$)`, 'g');
         ssml = ssml.replace(regex, `[[TAIL_${kw}]]`);
     });
 
-    // 🚀 4. 長句流體減速
-    ssml = ssml.replace(/([^、。！？<>\[\]]{18,})([がはもを])(?![、。！？])/g, (match, text, particle) => {
-        return `<prosody rate="${targetRateStr}">${text}${particle}</prosody><break time="180ms"/>`;
+    // 🚀 4. 長句流體減速（動態閾值 + 擴充助詞）
+    const particlePattern = new RegExp(
+        `([^、。！？<>\\[\\]]{${dynamicThreshold},})([がはもをでにともへより])(?![、。！？])`, 'g'
+    );
+    ssml = ssml.replace(particlePattern, (match, text, particle) => {
+        return `<prosody rate="${targetRateStr}">${text}${particle}</prosody><break time="160ms"/>`;
     });
 
-    // 🚀 5. 還原句尾保護區
-    ssml = ssml.replace(/\[\[TAIL_(.*?)\]\]/g, `<prosody pitch="-1.2st" rate="94%">$1</prosody>`);
+    // 🚀 5. 複合長句強制切點（學習庫高頻詞額外插 break）
+    // 針對「について/において/によって」等長助詞組，無論長短都插斷
+    const mandatoryBreaks = [
+        'について', 'において', 'によって', 'に関して', 'に対して',
+        'ということで', 'ということです', 'ということに',
+        'これにより', 'これによって', 'それにより',
+        'を受けて', 'を踏まえて', 'に伴い', 'を経て',
+        'を手がかりに', 'に注目し', '引き起こす', 'にあたって',
+        'をもとに', 'をきっかけに', 'によると', 'とされて',
+        'とみられ', 'に含まれ', 'がわかり', 'ことが判明',
+        'ことがわかっ', 'に活躍した', 'として知られ',
+        ...hotTriggers.filter(t => t.length >= 4) // 學習庫中長度 4+ 的高頻詞
+    ];
+    // 去重並按長度排序
+    [...new Set(mandatoryBreaks)].sort((a, b) => b.length - a.length).forEach(phrase => {
+        ssml = ssml.replace(new RegExp(`(${phrase})(?!<break)`, 'g'), `$1<break time="170ms"/>`);
+    });
 
-    // 🔥 [CRITICAL DEFENSE] 殘留標籤熔斷
+    // 🚀 6. 疑問句語調上揚
+    ssml = ssml.replace(/(ですか|ますか)(?=[。？\s」]|$)/g,
+        `<prosody pitch="+1.8st" rate="96%">$1</prosody><break time="200ms"/>`
+    );
+    ssml = ssml.replace(/(か)(?=[。？\s]|$)/g,
+        `<prosody pitch="+1.5st" rate="97%">か</prosody>`
+    );
+
+    // 🚀 7. 還原句尾保護區（語調分流）
+    ssml = ssml.replace(/\[\[TAIL_(よね|だよね|ですよね|ますよね|かな|かしら|だろうか)\]\]/g,
+        `<prosody pitch="+0.8st" rate="96%">$1</prosody>`
+    );
+    ssml = ssml.replace(/\[\[TAIL_(だよ|ですよ|ますよ|わよ|のよ)\]\]/g,
+        `<prosody pitch="+0.5st" rate="97%">$1</prosody>`
+    );
+    ssml = ssml.replace(/\[\[TAIL_(だな|だね|ですね|ますね|だわ)\]\]/g,
+        `<prosody pitch="-0.5st" rate="97%">$1</prosody>`
+    );
+    ssml = ssml.replace(/\[\[TAIL_(.*?)\]\]/g,
+        `<prosody pitch="-1.2st" rate="94%">$1</prosody>`
+    );
     if (ssml.includes('[[TAIL_')) {
         ssml = ssml.replace(/\[\[TAIL_(.*?)\]\]/g, '$1');
     }
 
-    // 🚀 6. 標點校準
+    // 🚀 8. 標點停頓校準
     ssml = ssml.replace(/。/g, '。<break time="750ms"/>');
+    ssml = ssml.replace(/[！]/g, '！<break time="600ms"/>');
+    ssml = ssml.replace(/[？]/g, '？<break time="600ms"/>');
     ssml = ssml.replace(/、/g, '、<break time="200ms"/>');
+    ssml = ssml.replace(/…/g, '<break time="500ms"/>');
+    ssml = ssml.replace(/\n/g, '<break time="900ms"/>');
 
-    // 🚀 7. 物理去重與真空化壓縮
+    // 🚀 9. 連續 break 合併（取最大值，不堆疊）
+    ssml = ssml.replace(/(<break time="(\d+)ms"\s*\/>)\s*(<break time="(\d+)ms"\s*\/>)/g,
+        (_, b1, t1, b2, t2) => `<break time="${Math.max(parseInt(t1), parseInt(t2))}ms"/>`
+    );
+    // 再跑一次確保沒有三連 break
+    ssml = ssml.replace(/(<break time="(\d+)ms"\s*\/>)\s*(<break time="(\d+)ms"\s*\/>)/g,
+        (_, b1, t1, b2, t2) => `<break time="${Math.max(parseInt(t1), parseInt(t2))}ms"/>`
+    );
+
+    // 🚀 10. 物理去重與壓縮
     ssml = this._prosodySanitizer(ssml);
-    ssml = ssml.replace(/(<break time="\d+ms"\s*\/>)[\s\n\r]*\1/g, '$1');
-    
-    // 💡 終極對焦：移除標籤間的空格與換行
     const refinedContent = ssml.replace(/>\s+</g, '><').replace(/\s+/g, ' ').trim();
 
-    // 🔥 [CRITICAL WELD] 輸出主權封裝
-    // 💡 職人診斷：確保單一軌道輸出時，具備完整的 <speak> 根標籤。
-    // 如果內容已經包含 <speak> (防止重複包裹)，則直接回傳。
     if (refinedContent.startsWith('<speak')) return refinedContent;
-
     return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ja-JP"><prosody rate="1.0" pitch="0st">${refinedContent}</prosody></speak>`;
 },
 
@@ -567,47 +798,133 @@ _base64ToBlob(base64, type = 'audio/mp3') {
 },
 
 
-/** 🛡️ 降級軌道：原生 Web Speech API (V2026.ULTRA 物理攔截版) */
+/** 🛡️ 降級軌道：原生 Web Speech API (V2026.ULTRA 串行斷句引擎版) */
 _fallbackSpeak(text, rate = 0.9, pitch = 0.0) {
-    // 🚀 1. 物理入口攔截
-    // 💡 職人診斷：若總線已下達停止指令，嚴禁啟動原生引擎，直接封殺進入點
     if (window.JP_AUDIO_STOP_SIGNAL === true) {
         console.warn("⚠️ [JP-TTS-Fallback] 攔截成功：偵測到熔斷旗幟，拒絕啟動降級軌道");
         return;
     }
 
-    // 🚀 2. 物理搶占：清空排隊中的語音
-    if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+    // 1. 文字洗滌：利用現有管線清理 HTML、符號、注音
+    let clean = this._sanitizeAcoustic(String(text));
+    if (!clean) return;
+
+    // 2. 智慧斷句：依標點切片，每片段附帶停頓時間（ms）
+    //    。！？ → 長停頓 520ms
+    //    、，… → 短停頓 260ms
+    //    超過 30 字強制切一刀，加 180ms 微停頓
+    const chunks = [];
+    const parts = clean.split(/([。！？、，…])/);
+    let buffer = "";
+
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const isPunct = /^[。！？、，…]$/.test(part);
+
+        if (isPunct) {
+            buffer += part;
+            const pause = /^[。！？]$/.test(part) ? 520 : 260;
+            // 超過 30 字再切成子片段
+            const subChunks = buffer.match(/.{1,30}/g) || [buffer];
+            subChunks.forEach((sub, si) => {
+                chunks.push({
+                    text: sub.trim(),
+                    pause: si < subChunks.length - 1 ? 180 : pause
+                });
+            });
+            buffer = "";
+        } else {
+            buffer += part;
+        }
+    }
+    // 處理最後沒有標點結尾的殘留
+    if (buffer.trim()) {
+        const subChunks = buffer.match(/.{1,30}/g) || [buffer];
+        subChunks.forEach((sub, si) => {
+            chunks.push({
+                text: sub.trim(),
+                pause: si < subChunks.length - 1 ? 180 : 0
+            });
+        });
     }
 
-    // 🚀 3. 構建聲學實體
-    const uttr = new SpeechSynthesisUtterance(text);
-    uttr.lang = 'ja-JP';
-    
-    // 🛡️ 4. 參數補償與映射
-    const safeRate = Math.max(0.1, Math.min(parseFloat(rate) || 1.0, 2.0));
-    uttr.rate = safeRate;
-    
-    const pitchOffset = (parseFloat(pitch) || 0) * 0.125; 
-    const safePitch = Math.max(0.1, Math.min(1.0 + pitchOffset, 2.0));
-    uttr.pitch = safePitch;
-    uttr.volume = 1.0;
+    const validChunks = chunks.filter(c => c.text.length > 0);
+    if (validChunks.length === 0) return;
 
-    // 🚀 5. 雙重保險：在語音「即將噴發」的瞬間再次核對旗幟
-    // 💡 職人診斷：SpeechSynthesis 有時會有啟動延遲，透過 onstart 確保最後一毫秒的熔斷權
-    uttr.onstart = () => {
+    // 3. 參數設定
+    const safeRate = Math.max(0.5, Math.min(parseFloat(rate) || 0.9, 1.6));
+    const pitchOffset = (parseFloat(pitch) || 0) * 0.125;
+    const safePitch = Math.max(0.5, Math.min(1.0 + pitchOffset, 1.8));
+
+    // 4. 預先選好日文語音（只選一次）
+    const voices = window.speechSynthesis.getVoices();
+    const jaVoice = voices.find(v => v.lang === 'ja-JP' && v.localService)
+                 || voices.find(v => v.lang === 'ja-JP')
+                 || voices.find(v => v.lang.startsWith('ja'))
+                 || null;
+
+    // 5. 串行播放引擎
+    let idx = 0;
+    const playNext = () => {
         if (window.JP_AUDIO_STOP_SIGNAL === true) {
             window.speechSynthesis.cancel();
-            console.log("🚫 [JP-TTS-Fallback] 原生語音啟動瞬間熔斷成功");
+            return;
         }
+        if (idx >= validChunks.length) {
+            console.log('✅ [Fallback-Engine] 串行播報完畢');
+            return;
+        }
+
+        const chunk = validChunks[idx++];
+        const uttr = new SpeechSynthesisUtterance(chunk.text);
+        uttr.lang = 'ja-JP';
+        uttr.rate = safeRate;
+        uttr.pitch = safePitch;
+        uttr.volume = 1.0;
+        if (jaVoice) uttr.voice = jaVoice;
+
+        uttr.onstart = () => {
+            if (window.JP_AUDIO_STOP_SIGNAL === true) {
+                window.speechSynthesis.cancel();
+            }
+        };
+
+        uttr.onend = () => {
+            if (window.JP_AUDIO_STOP_SIGNAL === true) return;
+            if (chunk.pause > 0) {
+                setTimeout(playNext, chunk.pause);
+            } else {
+                playNext();
+            }
+        };
+
+        uttr.onerror = (e) => {
+            console.warn(`⚠️ [Fallback-Engine] 片段異常，跳過: "${chunk.text}"`, e.error);
+            playNext();
+        };
+
+        window.speechSynthesis.speak(uttr);
     };
 
-    // 🚀 6. 執行導通
-    window.speechSynthesis.speak(uttr);
+    // 6. 點火（等待 voices 載入完畢）
+    if (window.speechSynthesis.getVoices().length > 0) {
+        playNext();
+    } else {
+        window.speechSynthesis.onvoiceschanged = () => {
+            // 重新選音源
+            const v = window.speechSynthesis.getVoices();
+            const jv = v.find(x => x.lang === 'ja-JP' && x.localService)
+                    || v.find(x => x.lang === 'ja-JP')
+                    || v.find(x => x.lang.startsWith('ja'));
+            if (jv) validChunks.forEach(() => {}); // jaVoice 已在閉包內，不需重設
+            playNext();
+        };
+    }
 
-    console.warn(`⚠️ [JP-TTS-Fallback] 導通原生引擎 | 語速: ${safeRate}x | 映射音高: ${safePitch.toFixed(2)}`);
-}
+    console.log(`🎙️ [Fallback-Engine] 串行引擎點火 | ${validChunks.length} 個片段 | 語速: ${safeRate}x | 音高: ${safePitch.toFixed(2)}`);
+  }
 
 };
 

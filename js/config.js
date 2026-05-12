@@ -98,3 +98,5 @@ export const EXCHANGE_CONFIG = {
     // API 備援路徑 (建議申請免費 API Key 填入)
     API_URL: 'https://open.er-api.com/v6/latest/' 
 };
+
+window.CONFIG = CONFIG;

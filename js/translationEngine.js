@@ -1329,8 +1329,6 @@ async executeTextTranslate() {
     const ttsEl = document.getElementById('tts-target');
     
     if (!text) return uiManager.showToast('⚠️', "請先鍵入內容");
-
-    // 🚀 1. 介面點火
     if (resultArea) resultArea.classList.remove('hidden');
     const sttEl = document.getElementById('stt-original');
     if (sttEl) sttEl.innerText = `原文鍵入：${text}`;
@@ -1339,25 +1337,21 @@ async executeTextTranslate() {
         ttsEl.innerText = "AI 語義對焦中...";
         ttsEl.classList.add('animate-pulse');
     }
-
     try {
-        // 🚀 2. 語義對焦：獲取譯文燃料
         const translated = await this._executeTranslation(text); 
         
-        // 🚀 3. 標籤指紋對位 (V2026.ULTRA 核心補強)
-        // 💡 職人診斷：感應目前的鎖定狀態，若為自動則回歸「一般」分區
         const targetCategory = (this.lockedCategory === '自動' || this.lockedCategory === 'AUTO') 
                                ? '一般' 
                                : this.lockedCategory;
 
-        // 🚀 4. 數據固化焊接
         if (dbManager) {
             const currentLang = localStorage.getItem('tf_trans_lang') || 'JP';
             const record = {
                 id: `txt_${Date.now()}`,
-                type: 'text',           // 識別為文字鍵入
-                lang: currentLang,      // 語系 DNA
-                category: targetCategory, // 🔐 鎖定分類指紋
+                type: 'text',
+                lang: currentLang,
+                category: targetCategory,
+                tripId: window.state?.activeTripId || null, // 🚀 [新增]
                 原文: text,
                 翻譯: translated,
                 timestamp: Date.now()
@@ -1368,13 +1362,11 @@ async executeTextTranslate() {
                 .catch(e => console.error("❌ [Storage-Fail]", e));
         }
 
-        // 5. 數據熱更新
         if (ttsEl) {
             ttsEl.innerText = translated;
             ttsEl.classList.remove('animate-pulse');
         }
         
-        // 🚀 6. 聲學噴發
         if (window.audioManager) {
             window.audioManager.speak(translated);
         }
@@ -1718,22 +1710,23 @@ async injectFuelFromClipboard() {
             }
         }
 
-        // 🚀 5. 文章燃料包固化
-        const articlePackage = {
-            id: `art_${Date.now()}`,
-            type: 'article_package',
-            title: cleanLines[0].substring(0, 25).replace(/[\[\]]/g, ''),
-            lang: currentLang,
-            category: targetCategory,
-            segments: segmentsTuple,
-            timestamp: Date.now()
-        };
+// 🚀 5. 文章燃料包固化
+const articlePackage = {
+    id: `art_${Date.now()}`,
+    type: 'article_package',
+    title: cleanLines[0].substring(0, 25).replace(/[\[\]]/g, ''),
+    lang: currentLang,
+    category: targetCategory,
+    tripId: window.state?.activeTripId || null, // 🚀 [新增]
+    segments: segmentsTuple,
+    timestamp: Date.now()
+};
 
         if (dbManager) {
             await dbManager.put(dbManager.STORES.TRANS_VAULT, articlePackage);
         }
 
-        // 🚀 6. 視圖熱重連
+// 🚀 6. 視圖熱重連
         const refreshFilter = (this.lockedCategory === '自動') ? '全部' : this.lockedCategory;
         if (typeof this.loadLiveHistory === 'function') {
             await this.loadLiveHistory(refreshFilter); 
@@ -1741,6 +1734,9 @@ async injectFuelFromClipboard() {
 
         uiManager.showToast('🎯', `成功注入 [${targetCategory}] 燃料包`);
         if (navigator.vibrate) navigator.vibrate([10, 30]);
+
+        // 🚀 [新增] 靜默同步特訓磁區，確保新單字自動進入影子資料庫
+        if (window.App) setTimeout(() => App.syncSRSShadow({ silent: true }), 300);
 
     } catch (err) {
         console.error("❌ [Fuel-Production-Collapse]:", err);
@@ -1756,35 +1752,30 @@ async importTranslateFuel() {
     const input = document.getElementById('trans-json-input');
     let jsonStr = input ? input.value.trim() : "";
     if (!jsonStr) return;
-
     try {
-        // 1. 數據洗滌 (物理切除 Markdown 噪音)
         jsonStr = jsonStr.replace(/^```json\s*/, '')
                         .replace(/^```\s*/, '')
                         .replace(/\s*```$/, '')
                         .trim();
 
-        // 2. 解析 JSON 燃料包
         const data = JSON.parse(jsonStr);
         const newRawItems = Array.isArray(data) ? data : [data];
 
-        // 🚀 核心對焦：獲取當前語系 DNA
         const currentLang = localStorage.getItem('tf_trans_lang') || 'JP';
 
-        // 🚀 數據重組：為每一筆燃料打上全域標籤
+        // 🚀 [修正] 補上 tripId
         const newItems = newRawItems.map((item, index) => ({
             ...item,
             lang: currentLang,
-            type: 'contextual', // 識別為批量注入的情境翻譯
+            type: 'contextual',
             id: `vlt_${Date.now()}_${index}`,
+            tripId: window.state?.activeTripId || null, // 🚀 [新增]
             timestamp: Date.now()
         }));
 
-        // 🚀 核心焊接：直接呼叫 dbManager 的批量寫入潛力
         if (dbManager) {
             console.log(`📡 [Bulk-Import] 準備固化 ${newItems.length} 筆燃料至 TRANS_VAULT...`);
             
-            // 使用 Promise.all 確保所有燃料物理固化
             const savePromises = newItems.map(item => 
                 dbManager.put(dbManager.STORES.TRANS_VAULT, item)
             );
@@ -1795,16 +1786,12 @@ async importTranslateFuel() {
             throw new Error("DB_MANAGER_OFFLINE");
         }
 
-        // 🚀 核心焊接 3：觸發視圖更新
-        // 既然已經解耦，不再跳轉至行程頁面，改為點亮當前的翻譯視圖清單
         if (typeof this.filterTranslate === 'function') {
             this.filterTranslate('全部'); 
         }
 
-        // 4. 反饋與清理
         uiManager.showToast('✅', `已存入 ${newItems.length} 筆${currentLang === 'JP' ? '日文' : '英文'}情境燃料`);
         if (input) input.value = '';
-
     } catch (e) {
         console.error("❌ [Fuel-Collapse] 注入程序中斷:", e);
         uiManager.showToast('⚠️', "解析失敗：請檢查 JSON 格式或磁區狀態");
@@ -3322,7 +3309,12 @@ async deleteArticleRecord(id) {
             await dbManager.delete(dbManager.STORES.TRANS_VAULT, id);
             uiManager.showToast('🧹', "燃料已物理回收");
             // 重新讀取目前的分類視圖
-            this.loadLiveHistory('全部');
+            const container = document.getElementById('content-container') || document.getElementById('view-container');
+if (document.getElementById('translate-vault-track')) {
+    this.filterTranslate('全部');
+} else {
+    this.loadLiveHistory('全部');
+}
         }
     } catch (err) {
         console.error("❌ [Delete-Fail]", err);
@@ -3374,6 +3366,117 @@ async clearTranslateVault() {
         uiManager.showToast('💥', "數據回收異常，路網受阻");
     }
 },
+
+/** ✏️ [Action] 編輯情境翻譯單句卡片 */
+async editContextualItem(id) {
+    try {
+        const record = await dbManager.get(dbManager.STORES.TRANS_VAULT, id);
+        if (!record) return uiManager.showToast('⚠️', '找不到資料');
+
+        const recordJson = JSON.stringify(record, null, 2);
+
+        const content = `
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+
+                <!-- 模式切換 -->
+                <div style="display: flex; background: #F1EFE8; border-radius: 10px; padding: 4px; gap: 4px;">
+                    <button id="ctx-tab-form" onclick="
+                        document.getElementById('ctx-form-view').style.display='flex';
+                        document.getElementById('ctx-json-view').style.display='none';
+                        this.style.background='white'; this.style.color='#1a1a1a';
+                        document.getElementById('ctx-tab-json').style.background='transparent'; document.getElementById('ctx-tab-json').style.color='#888780';
+                    " style="flex:1;padding:8px;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;background:white;color:#1a1a1a;">
+                        表單編輯
+                    </button>
+                    <button id="ctx-tab-json" onclick="
+                        document.getElementById('ctx-form-view').style.display='none';
+                        document.getElementById('ctx-json-view').style.display='flex';
+                        this.style.background='white'; this.style.color='#1a1a1a';
+                        document.getElementById('ctx-tab-form').style.background='transparent'; document.getElementById('ctx-tab-form').style.color='#888780';
+                    " style="flex:1;padding:8px;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#888780;">
+                        JSON 編輯
+                    </button>
+                </div>
+
+                <!-- 表單模式 -->
+                <div id="ctx-form-view" style="display: flex; flex-direction: column; gap: 14px;">
+                    <div>
+                        <label style="font-size:11px;font-weight:700;color:#888780;display:block;margin-bottom:6px;">中文原文</label>
+                        <textarea id="edit-ctx-q" style="width:100%;background:#F8F7F4;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:500;color:#1a1a1a;resize:none;outline:none;min-height:70px;box-sizing:border-box;">${record.q || ''}</textarea>
+                    </div>
+                    <div>
+                        <label style="font-size:11px;font-weight:700;color:#888780;display:block;margin-bottom:6px;">日文譯文</label>
+                        <textarea id="edit-ctx-a" style="width:100%;background:#F8F7F4;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:500;color:#1a1a1a;resize:none;outline:none;min-height:90px;box-sizing:border-box;">${record.a || ''}</textarea>
+                    </div>
+                    <div>
+                        <label style="font-size:11px;font-weight:700;color:#888780;display:block;margin-bottom:6px;">分類</label>
+                        <input id="edit-ctx-cat" type="text" value="${record.category || '一般'}" style="width:100%;background:#F8F7F4;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:500;color:#1a1a1a;outline:none;box-sizing:border-box;">
+                    </div>
+                </div>
+
+                <!-- JSON 模式 -->
+                <div id="ctx-json-view" style="display: none; flex-direction: column; gap: 8px;">
+                    <label style="font-size:11px;font-weight:700;color:#888780;">直接編輯 JSON</label>
+                    <textarea id="edit-ctx-json" style="width:100%;background:#F8F7F4;border:none;border-radius:10px;padding:12px;font-size:11px;font-family:monospace;color:#D4537E;resize:none;outline:none;min-height:240px;box-sizing:border-box;">${recordJson}</textarea>
+                </div>
+
+            </div>
+        `;
+
+        const actions = `
+            <div style="display: flex; gap: 10px;">
+                <button onclick="App.modalRemove('edit-ctx-modal')" style="flex:1;padding:14px;background:#F1EFE8;color:#5F5E5A;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">取消</button>
+                <button onclick="translationEngine.saveContextualItem('${id}')" style="flex:2;padding:14px;background:#D4537E;color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">儲存</button>
+            </div>
+        `;
+
+        modalEngine.create('edit-ctx-modal', '編輯翻譯', content, actions);
+
+    } catch (err) {
+        console.error('❌ [EditContextual-Fail]', err);
+        uiManager.showToast('⚠️', '編輯器點火失敗');
+    }
+},
+
+/** 💾 [Action] 儲存情境翻譯編輯結果 */
+async saveContextualItem(id) {
+    try {
+        const jsonView = document.getElementById('ctx-json-view');
+        const isJsonMode = jsonView?.style.display !== 'none';
+
+        let updatedRecord;
+
+        if (isJsonMode) {
+            // JSON 模式：直接解析
+            const raw = document.getElementById('edit-ctx-json')?.value.trim();
+            if (!raw) return uiManager.showToast('⚠️', 'JSON 不可為空');
+            updatedRecord = JSON.parse(raw);
+        } else {
+            // 表單模式
+            const q = document.getElementById('edit-ctx-q')?.value.trim();
+            const a = document.getElementById('edit-ctx-a')?.value.trim();
+            const cat = document.getElementById('edit-ctx-cat')?.value.trim();
+            if (!q || !a) return uiManager.showToast('⚠️', '中文與日文不可為空');
+            const record = await dbManager.get(dbManager.STORES.TRANS_VAULT, id);
+            updatedRecord = { ...record, q, a, category: cat || '一般' };
+        }
+
+        await dbManager.put(dbManager.STORES.TRANS_VAULT, updatedRecord);
+        App.modalRemove('edit-ctx-modal');
+        uiManager.showToast('✅', '已儲存');
+
+        if (document.getElementById('translate-vault-track')) {
+            this.filterTranslate('全部');
+        } else {
+            this.loadLiveHistory('全部');
+        }
+
+    } catch (err) {
+        console.error('❌ [SaveContextual-Fail]', err);
+        uiManager.showToast('⚠️', err.message.includes('JSON') ? 'JSON 格式錯誤' : '儲存失敗');
+    }
+},
+
 
 /**情境翻譯prompt , 不是realtime翻譯prompt
 /** 🚀 AI 指令引擎：V2026.ULTRA 參數導通版 (日文版) */
@@ -3537,27 +3640,24 @@ async theatreImportToVault() {
         const level = document.querySelector('#dialogue-level-selector .diag-lvl-btn.theme-bg')?.dataset.level || 'N3';
         const currentLang = localStorage.getItem('tf_trans_lang') || 'JP';
 
-        const dialoguePackage = {
-            id: `diag_${Date.now()}`,
-            type: 'article_package',
-            // 💡 標題優化：若偵測到教授與山本，則動態命名標題
-            title: detectedName ? `🎭 ${detectedName} 等人的劇場對話` : `🎭 ${uiActorA.name} x ${uiActorB.name}：時事劇場`,
-            category: '會話', 
-            lang: currentLang,
-            level: level,
-            segments: dialogueSegments,
-            
-            // 🔥 [CRITICAL WELD] 數據與基因焊接
-            // 💡 職人協定：存檔時保留當前 UI 角色作為「聲學基座」，播放時若識字器命中 NAME_POOL 則優先分流
-            acousticConfig: {
-                actorA: uiActorA,
-                actorB: uiActorB,
-                isFuelCentric: !!detectedName // 標記此包為燃料自帶姓名
-            },
-
-            timestamp: Date.now(),
-            tags: ['劇場生成', '會話', detectedName || uiActorA.name]
-        };
+const dialoguePackage = {
+    id: `diag_${Date.now()}`,
+    type: 'article_package',
+    title: detectedName ? `🎭 ${detectedName} 等人的劇場對話` : `🎭 ${uiActorA.name} x ${uiActorB.name}：時事劇場`,
+    category: '會話', 
+    lang: currentLang,
+    level: level,
+    tripId: window.state?.activeTripId || null, // 🚀 [新增]
+    segments: dialogueSegments,
+    
+    acousticConfig: {
+        actorA: uiActorA,
+        actorB: uiActorB,
+        isFuelCentric: !!detectedName
+    },
+    timestamp: Date.now(),
+    tags: ['劇場生成', '會話', detectedName || uiActorA.name]
+};
 
         // 🚀 4. 實體磁區固化
         await dbManager.put(dbManager.STORES.TRANS_VAULT, dialoguePackage);
@@ -3911,16 +4011,17 @@ async capturePhoto() {
         // 🚀 6. 數據固化焊接
         if (dbManager) {
             const currentLang = localStorage.getItem('tf_trans_lang') || 'JP';
-            const record = {
-                id: `img_${currentLang.toLowerCase()}_${Date.now()}`,
-                type: 'image',          // 識別為影像辨識
-                lang: currentLang,      // 語系 DNA
-                category: targetCategory, // 🔐 鎖定分類指紋
-                原文: "[影像識別文字]",
-                翻譯: translated,
-                imageUrl: imageData,    // 固化當時影像截圖
-                timestamp: Date.now()
-            };
+const record = {
+    id: `img_${currentLang.toLowerCase()}_${Date.now()}`,
+    type: 'image',
+    lang: currentLang,
+    category: targetCategory,
+    tripId: window.state?.activeTripId || null, // 🚀 [新增]
+    原文: "[影像識別文字]",
+    翻譯: translated,
+    imageUrl: imageData,
+    timestamp: Date.now()
+};
             
             dbManager.put(dbManager.STORES.TRANS_VAULT, record)
                 .then(() => console.log(`💾 [Snapshot-Solidified] 照片已存入分區: ${targetCategory}`))

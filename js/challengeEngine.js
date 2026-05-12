@@ -70,12 +70,12 @@ generateChallenge(item, allItems) {
             break;
 
         case 'meaning':
-            question.title = "用法對焦：請選出正確的中文意義";
-            // 💡 視覺對焦：若有漢字則輔助顯示，優化識讀體驗
-            question.content = hasWord ? `${word} (${reading})` : reading;
-            question.correct = trans;
-            question.options = this._mixOptions(question.correct, allItems, 'trans');
-            break;
+    question.title = "用法對焦：請選出正確的中文意義";
+    question.content = hasWord ? `${word} (${reading})` : reading;
+    // ✅ 同時清理括號和斜線
+    question.correct = trans.split(/[（(\/]/)[0].trim();
+    question.options = this._mixOptions(question.correct, allItems, 'trans');
+    break;
 
         case 'usage':
             question.title = "語法對焦：哪一個句子用法正確？";
@@ -88,113 +88,246 @@ generateChallenge(item, allItems) {
     return question;
 },
 
-/** 🚀 混合選項與干擾項 (V2026.ULTRA.STABLE_FINAL) */
 _mixOptions(correct, allItems, field) {
-    const distractors = new Set();
     const safeCorrect = String(correct || "").trim();
-    
-    // 1. 🚀 策略 1: 假名拆解重組 (保持原有邏輯)
-    if (field !== 'trans' && safeCorrect.length > 1) {
-        const chars = safeCorrect.split('');
-        const shuffled = [...chars].sort(() => Math.random() - 0.5).join('');
-        if (shuffled !== safeCorrect) distractors.add(shuffled);
-    }
+    const distractors = new Set();
 
-    // 2. 🚀 策略 2: 燃料池提取與洗滌
-    const pool = allItems
-        .map(it => {
-            const val = it[field === 'trans' ? (it.translation ? 'translation' : 'trans') : field];
-            return String(val || "").trim();
-        })
-        .filter(val => val && val !== '---' && val !== safeCorrect);
+    const voiced = {
+        'か':'が','き':'ぎ','く':'ぐ','け':'げ','こ':'ご',
+        'さ':'ざ','し':'じ','す':'ず','せ':'ぜ','そ':'ぞ',
+        'た':'だ','ち':'ぢ','つ':'づ','て':'で','と':'ど',
+        'は':'ば','ひ':'び','ふ':'ぶ','へ':'べ','ほ':'ぼ',
+        'が':'か','ぎ':'き','ぐ':'く','げ':'け','ご':'こ',
+        'ざ':'さ','じ':'し','ず':'す','ぜ':'せ','ぞ':'そ',
+        'だ':'た','ぢ':'ち','づ':'つ','で':'て','ど':'と',
+        'ば':'は','び':'ひ','ぶ':'ふ','べ':'へ','ぼ':'ほ',
+    };
+    const semiVoiced = {
+        'は':'ぱ','ひ':'ぴ','ふ':'ぷ','へ':'ぺ','ほ':'ぽ',
+        'ぱ':'は','ぴ':'ひ','ぷ':'ふ','ぺ':'へ','ぽ':'ほ',
+        'ば':'ぱ','び':'ぴ','ぶ':'ぷ','べ':'ぺ','ぼ':'ぽ',
+        'ぱ':'ば','ぴ':'び','ぷ':'ぶ','ぺ':'べ','ぽ':'ぼ',
+    };
+    const longShort = {
+        'よう':'よ','りょう':'りょ','しょう':'しょ','ちょう':'ちょ',
+        'じょう':'じょ','にょう':'にょ','びょう':'びょ','みょう':'みょ',
+        'よ':'よう','りょ':'りょう','しょ':'しょう','ちょ':'ちょう',
+    };
 
-    let attempts = 0;
-    const maxAttempts = 15;
+    const mutatePronunciation = (str) => {
+        const results = new Set();
+        const chars = str.split('');
 
-    while (distractors.size < 2 && attempts < maxAttempts) {
-        attempts++;
-        if (pool.length > 0) {
-            const randVal = pool[Math.floor(Math.random() * pool.length)];
-            distractors.add(randVal);
-        } else {
-            // 💡 職人級補償：池子乾涸時，噴發模擬燃料取代「候補-A」
-            // 這些字根是針對 N4/N3 常用單字預設的「影子干擾項」
-            const ghostFuel = ["初め", "日記", "記述", "明らか", "残る", "光", "砂", "空", "海", "時"];
-            const ghost = ghostFuel[Math.floor(Math.random() * ghostFuel.length)];
-            if (ghost !== safeCorrect) distractors.add(ghost);
+        chars.forEach((c, i) => {
+            if (voiced[c] || semiVoiced[c]) {
+                const fake = [...chars];
+                fake[i] = voiced[c] || semiVoiced[c];
+                results.add(fake.join(''));
+            }
+        });
+
+        for (let i = 0; i < chars.length - 1; i++) {
+            const fake = [...chars];
+            [fake[i], fake[i+1]] = [fake[i+1], fake[i]];
+            const fakeStr = fake.join('');
+            if (fakeStr !== str) results.add(fakeStr);
+        }
+
+        for (const [from, to] of Object.entries(longShort)) {
+            if (str.includes(from)) {
+                const mutated = str.replace(from, to);
+                if (mutated !== str) results.add(mutated);
+                break;
+            }
+        }
+
+        const commonEndings = ['る','す','く','む','ぶ','つ','ぬ','う'];
+        const lastChar = chars[chars.length - 1];
+        commonEndings.forEach(e => {
+            if (e !== lastChar) {
+                const fake = [...chars];
+                fake[fake.length - 1] = e;
+                results.add(fake.join(''));
+            }
+        });
+
+        return [...results].filter(r => r !== str);
+    };
+
+    // ── 讀音題 ──────────────────────────────────────────
+    if (field === 'reading') {
+        const mutations = mutatePronunciation(safeCorrect);
+        mutations.sort((a, b) => {
+            const aDiff = [...a].filter((c, i) => c !== safeCorrect[i]).length;
+            const bDiff = [...b].filter((c, i) => c !== safeCorrect[i]).length;
+            return aDiff - bDiff;
+        });
+        for (const m of mutations) {
+            if (distractors.size >= 2) break;
+            distractors.add(m);
         }
     }
 
-    // 3. 🚀 最終輸出固化與物理補齊
-    const finalOptions = [safeCorrect, ...Array.from(distractors)].slice(0, 3);
-    
-    // 💡 終極防線：如果還是湊不齊 3 個 (極端小池子狀態)，執行最後填充
-    const padding = ["確認", "完了", "修正"];
-    let pIdx = 0;
-    while (finalOptions.length < 3) {
-        finalOptions.push(padding[pIdx] || `選項-${finalOptions.length}`);
-        pIdx++;
+    // ── 漢字題 ──────────────────────────────────────────
+    if (field === 'word') {
+        const correctItem = allItems.find(it => it.word === safeCorrect);
+        const correctReading = correctItem?.reading || '';
+
+        if (correctReading) {
+            const prefix = correctReading.slice(0, 2);
+            allItems
+                .filter(it => it.reading?.startsWith(prefix) && it.word !== safeCorrect && it.word)
+                .sort(() => Math.random() - 0.5)
+                .forEach(it => { if (distractors.size < 2) distractors.add(it.word); });
+        }
+
+        if (distractors.size < 2) {
+            mutatePronunciation(correctReading).forEach(m => {
+                if (distractors.size >= 2) return;
+                const match = allItems.find(it => it.reading === m);
+                if (match?.word && match.word !== safeCorrect) distractors.add(match.word);
+            });
+        }
+
+        if (distractors.size < 2) {
+            allItems
+                .filter(it => it.level === correctItem?.level && it.word !== safeCorrect && it.word)
+                .sort(() => Math.random() - 0.5)
+                .forEach(it => { if (distractors.size < 2) distractors.add(it.word); });
+        }
     }
 
-    return finalOptions.sort(() => Math.random() - 0.5);
+    // ── 翻譯題 ──────────────────────────────────────────
+    if (field === 'trans') {
+        const getTrans = (it) => String(it.trans || it.translation || it[5] || '').split(/[（(\/]/)[0].trim();
+
+        // 策略A：否定化 — 加上長度限制，超過6字不做否定
+if (distractors.size < 2) {
+    const negations = ['不', '沒有', '無法', '不能'];
+    for (const neg of negations.sort(() => Math.random() - 0.5)) {
+        if (!safeCorrect.startsWith(neg) && safeCorrect.length <= 6) {
+            distractors.add(neg + safeCorrect);
+            break;
+        }
+    }
+}
+
+        // 策略B：截字混淆（去掉最後1~2字）
+        if (distractors.size < 2 && safeCorrect.length > 2) {
+            const shorter = safeCorrect.slice(0, -1);
+            if (shorter && shorter !== safeCorrect) distractors.add(shorter);
+        }
+        if (distractors.size < 2 && safeCorrect.length > 3) {
+            const shorter2 = safeCorrect.slice(0, -2);
+            if (shorter2 && shorter2 !== safeCorrect) distractors.add(shorter2);
+        }
+
+        // 策略C：字數相近的其他翻譯
+        if (distractors.size < 2) {
+            allItems
+                .map(it => getTrans(it))
+                .filter(t => t && t !== safeCorrect && t !== '---' &&
+                    Math.abs(t.length - safeCorrect.length) <= 3)
+                .sort(() => Math.random() - 0.5)
+                .forEach(t => { if (distractors.size < 2) distractors.add(t); });
+        }
+
+        // 備援：任意翻譯
+        if (distractors.size < 2) {
+            allItems
+                .map(it => getTrans(it))
+                .filter(t => t && t !== safeCorrect && t !== '---')
+                .sort(() => Math.random() - 0.5)
+                .forEach(t => { if (distractors.size < 2) distractors.add(t); });
+        }
+    }
+
+    // ── 備援補齊 ──────────────────────────────────────────
+    if (distractors.size < 2) {
+        ['確認', '完了', '修正'].forEach(f => {
+            if (distractors.size < 2 && f !== safeCorrect) distractors.add(f);
+        });
+    }
+
+    return [safeCorrect, ...Array.from(distractors)].slice(0, 3).sort(() => Math.random() - 0.5);
 },
 
-/** 🚀 語法干擾項生成 (V2026.ULTRA 助詞篡改與自動補償版) */
+
 _generateUsageDistractors(sentence, allItems) {
     const distractors = new Set();
-    const particles = ['を', 'に', 'へ', 'で', 'が', 'は'];
 
-    // 🚀 [修正 A] 數據熔斷補償：若無例句燃料，從全池中隨機抓取 2 筆非重複例句
+    // 混淆助詞對：容易搞混的組合
+    const confusablePairs = [
+        ['を', 'が'], ['に', 'で'], ['は', 'が'],
+        ['へ', 'に'], ['から', 'まで'], ['と', 'や'],
+        ['の', 'が'], ['も', 'は']
+    ];
+
     if (!sentence || sentence === '---') {
         const fallbackPool = allItems
             .filter(it => it.example && it.example !== '---')
-            .map(it => it.example);
-        
-        // 若池子太小，則給予硬編碼的基礎語法燃料
-        const finalPool = fallbackPool.length >= 2 ? fallbackPool : ["日本語を勉強します。", "日本へ行きたいです。"];
-        
-        while (distractors.size < 2) {
-            const randIdx = Math.floor(Math.random() * finalPool.length);
-            distractors.add(finalPool[randIdx]);
+            .map(it => it.example)
+            .sort(() => Math.random() - 0.5);
+        return fallbackPool.slice(0, 3).length >= 3
+            ? fallbackPool.slice(0, 3)
+            : ["日本語を勉強します。", "日本へ行きたいです。", "友達と話します。"];
+    }
+
+    // 策略1：混淆助詞替換（只換容易混淆的組合）
+    for (const [a, b] of confusablePairs.sort(() => Math.random() - 0.5)) {
+        if (distractors.size >= 2) break;
+        if (sentence.includes(a)) {
+            const fake = sentence.replace(a, b);
+            if (fake !== sentence) distractors.add(fake);
+        } else if (sentence.includes(b)) {
+            const fake = sentence.replace(b, a);
+            if (fake !== sentence) distractors.add(fake);
         }
-        
-        // 此時 sentence 是無效的，回傳隨機抓取的 3 個選項
-        return Array.from(distractors).slice(0, 3).sort(() => Math.random() - 0.5);
     }
 
-    // 🚀 [修正 B] 篡改 1：精密助詞替換 (單次替換防止邏輯崩潰)
-    let fakeA = sentence;
-    const sentenceParticles = particles.filter(p => sentence.includes(p));
-    
-    if (sentenceParticles.length > 0) {
-        // 隨機選一個句子裡有的助詞進行篡改
-        const targetP = sentenceParticles[Math.floor(Math.random() * sentenceParticles.length)];
-        const otherP = particles.filter(p => p !== targetP)[Math.floor(Math.random() * 5)];
-        fakeA = sentence.replace(new RegExp(targetP, 'g'), otherP);
-        if (fakeA !== sentence) distractors.add(fakeA);
-    }
-
-    // 🚀 [修正 C] 篡改 2：語義亂流補完
-    // 從 allItems 中尋找其他例句，直到填滿 2 個干擾項為止
-    const otherExamples = allItems
-        .filter(it => it.example && it.example !== sentence && it.example !== '---')
-        .map(it => it.example);
-
-    let attempts = 0;
-    while (distractors.size < 2 && attempts < 20) {
-        if (otherExamples.length > 0) {
-            const randEx = otherExamples[Math.floor(Math.random() * otherExamples.length)];
-            distractors.add(randEx);
-        } else {
-            // 極端備援：若無其他例句，執行硬編碼篡改
-            distractors.add(sentence + "か。");
+    // 策略2：動詞形態替換（た形↔て形↔ます形，製造時態混淆）
+    if (distractors.size < 2) {
+        const verbSwaps = [
+            [/しました/, 'します'], [/します/, 'しました'],
+            [/でした/, 'です'], [/です/, 'でした'],
+            [/ました/, 'ます'], [/ます/, 'ました'],
+            [/ている/, 'ていた'], [/ていた/, 'ている'],
+            [/た。/, 'ている。'], [/ている。/, 'た。'],
+        ];
+        for (const [from, to] of verbSwaps.sort(() => Math.random() - 0.5)) {
+            if (distractors.size >= 2) break;
+            const fake = sentence.replace(from, to);
+            if (fake !== sentence && !distractors.has(fake)) distractors.add(fake);
         }
-        attempts++;
     }
 
-    // 🚀 [修正 D] 最終導通：確保回傳 3 個選項 (1 正確 + 2 錯誤)
-    const finalOptions = [sentence, ...Array.from(distractors)].slice(0, 3);
-    return finalOptions.sort(() => Math.random() - 0.5);
+    // 策略3：同主題例句（同 level 的其他詞的例句，語境相近更難分辨）
+    if (distractors.size < 2) {
+        const targetLevel = allItems.find(it => it.example === sentence)?.level;
+        const sameLevelExamples = allItems
+            .filter(it => it.example && it.example !== sentence && it.example !== '---'
+                && (!targetLevel || it.level === targetLevel))
+            .map(it => it.example)
+            .sort(() => Math.random() - 0.5);
+        for (const ex of sameLevelExamples) {
+            if (distractors.size >= 2) break;
+            distractors.add(ex);
+        }
+    }
+
+    // 備援：其他任意例句
+    if (distractors.size < 2) {
+        const others = allItems
+            .filter(it => it.example && it.example !== sentence && it.example !== '---')
+            .map(it => it.example)
+            .sort(() => Math.random() - 0.5);
+        for (const ex of others) {
+            if (distractors.size >= 2) break;
+            distractors.add(ex);
+        }
+    }
+
+    return [sentence, ...Array.from(distractors)].slice(0, 3).sort(() => Math.random() - 0.5);
 }
 
 };

@@ -161,13 +161,10 @@ broadcastStateChange() {
     }
 },
 
-/** 💉 [Atomic-Clear] 強制清空選取緩存與物理磁區 (V2026.ULTRA 狀態保活版) */
+/** 💉 [Atomic-Clear] 強制清空選取緩存與物理磁區 */
 clearSelection() {
-    // 1. 🚀 記憶體軌道釋放
-    // 💡 職人診斷：使用 Getter 確保觸發 Hydration 邏輯後再執行 clear()
     this._stagedSelection.clear();
 
-    // 2. 💾 物理磁區抹除 (Persistence Wipe)
     try {
         localStorage.removeItem('tf_staged_selection');
         console.log("🧹 [Backlog-Selection] 記憶體與物理磁區已同步釋放");
@@ -175,25 +172,28 @@ clearSelection() {
         console.error("🚨 [Storage-Wipe-Collapse] 物理磁區清理失敗:", e);
     }
 
-    // 3. 🚀 視覺路網閉環處理 (UX Loop Closure)
-    // 💡 職人對焦：若正處於「選取管理器」視窗內，必須強制熔斷模態框
+    // 🚀 [新增] 重置所有卡片的選取視覺狀態
+    document.querySelectorAll('.backlog-card').forEach(card => {
+        card.style.border = '1px solid #E2E8F0';
+        card.style.background = 'white';
+        card.style.boxShadow = 'none';
+        card.style.transform = 'translateY(0)';
+    });
+
     if (window.App) {
-        // A. 移除管理器模態框 (封殺 Selection Matrix Vacuum 視覺)
         App.modalRemove('selection-manager-modal');
-        
-        // B. 強制重導向至 backlog 視圖，確保所有卡片的 .selected 樣式被物理剥離
-        App.navigateTo('backlog');
+        const isManagerOpen = !!document.getElementById('selection-manager-modal');
+        if (isManagerOpen) {
+            App.navigateTo('backlog');
+        }
     }
 
-    // 4. 🎨 視覺連動廣播
     if (typeof viewEngine !== 'undefined' && viewEngine.updateRefineryFAB) {
-        // 💡 職人提醒：確保右下角精煉投射鈕 (FAB) 即時沉降
         viewEngine.updateRefineryFAB();
     }
-    
+
     if (navigator.vibrate) navigator.vibrate([10, 5, 10]);
 },
-
 
 /** 💉 [Atomic-Get] 獲取目前所有選取 ID */
 getSelectedIds() {
@@ -699,56 +699,50 @@ async copyRefineryPrompt(city, idsJson) {
     }
 },
 
-/** 🧪 [Private] 精煉廠專屬指令合成器 (V2026.ULTRA V2.1 模式對焦版) */
+/** 🧪 [Private] 精煉廠專屬指令合成器 (V2026.ULTRA V2.2) */
 _generateRefineryPrompt(city, itemsList) {
-    // 0. 🛡️ 數據完整性預檢
-    // 💡 職人診斷：若 itemsList 為空，直接攔截斷路，防止 AI 輸出的空 JSON 導致系統崩潰
     if (!itemsList || itemsList.trim() === "") {
         console.error("🚨 [Prompt-Generator] 燃料清單真空，拒絕合成");
         return "";
     }
 
-    // 🚀 1. 核心焊接：讀取精煉模式
     const refineryMode = localStorage.getItem('tf_refinery_mode') || 'split';
     const isSuite = refineryMode === 'suite';
 
-    // 💡 模式語義分流：強化「全量處理」的暗示，防止 AI 偷懶縮減節點
-    const modeInstruction = isSuite 
-        ? `【🚀 整合模式：請將以下「所有」項目整合為一個連續時序套裝行程，嚴禁遺漏任何節點，著重動線最佳化。】`
-        : `【🚀 單獨模式：請將以下「每個」項目視為獨立節點，分別提供詳盡的數據精煉。】`;
+    const modeInstruction = isSuite
+        ? `【整合模式：請將以下「所有」項目整合為一個連續時序套裝行程，嚴禁遺漏任何節點，著重動線最佳化。】`
+        : `【單獨模式：請將以下「每個」項目視為獨立節點，分別提供詳盡資料。】`;
 
-    // 2. 🚀 指令封裝
-    // 💡 職人診斷：透過反引號結構化，強制 AI 必須輸出「陣列」格式，且每個節點必須對應原始項目
     return `【STRICT_JSON_ONLY】
-你是一位具備實境地理路網數據的精煉專家。請根據「${city}」的實境地理，將以下 ${isSuite ? '全量項目整合' : '逐一項目精煉'} 為高品質行程模組（繁體中文），禁前言。
+你是具備實境地理數據的旅遊規劃專家。請根據「${city}」，將以下項目精煉為高品質行程模組（繁體中文），禁前言。
 
-【📍 待精煉原子燃料 (共計 ${itemsList.split('\n').length} 筆)】
+【待精煉清單（共 ${itemsList.split('\n').length} 筆）】
 ${itemsList}
 
 ${modeInstruction}
 
-【🚨 數據保真與重組協定】
-1. 🚀 節點保全：輸出之 JSON 陣列長度必須「等於」上述原子燃料的數量，嚴禁合併或刪除景點。
-2. 🚀 店名保真：[task] 欄位必須包含原始燃料中的「完整店名/景點全稱」，嚴禁縮寫或改名，以供系統執行「已去過」狀態對焦。
-3. 🚀 交通標記：點位間移動必須在 [move] 結尾標註「(⚠️ 需另行執行交通路網精煉)」。
-4. 🚀 亮點噴發：[spotlight] 必須提供該點位的「排隊攻略」或「避坑建議」；[expense] 僅限餐飲與門票，使用「純數字」。
+【輸出規範】
+1. 節點保全：JSON 陣列長度必須等於上述清單數量，嚴禁合併或刪除。
+2. 店名保真：[task] 必須包含完整原始店名/景點全稱，嚴禁縮寫。
+3. 交通欄位：[move] 只需寫交通方式與時間（如：搭地鐵約8分鐘），不加任何附加說明文字。
+4. 費用欄位：[expense] 僅限餐飲與門票，純數字日圓，無費用填 0。
+5. 停留時間：[duration] 建議停留分鐘數，純數字（如：90 代表 90 分鐘）。
+6. 亮點欄位：[spotlight] 提供排隊攻略或避坑建議（1-2句）。
 
-【🚨 數據純淨化約束 (禁言清單)】
-- 嚴禁提及：功能模組, 語義對焦, 實境應用, 核心零件, 數據純化, 戰術, 打擊, 燃料包, 焊接, 指令集
-
-【輸出範例格式】
+【輸出格式】
 [
   {
     "time": "HH:mm",
-    "task": "【標題】完整原始店名",
-    "move": "建議移動手段 (⚠️ 需另行執行交通路網精煉)",
+    "task": "完整原始店名/景點全稱",
+    "move": "交通方式（如：步行約5分鐘）",
+    "duration": 90,
     "expense": 0,
-    "spotlight": "✨亮點/避坑建議",
+    "spotlight": "✨ 避坑或亮點建議",
     "note": "細節備註"
   }
 ]
 
-請以【純淨 JSON 陣列】格式輸出，禁止前言與結語，嚴禁任何 Markdown 之外的冗餘解釋。`;
+請以純淨 JSON 陣列輸出，禁止前言與結語。`;
 },
 
 /** 🏭 [Refinery-Core] 批量存儲原子燃料 */
@@ -765,36 +759,46 @@ async addBatchRecords(items) {
 // ========================
 
 
-/** 🚀 [AI-Recon-Engine] 偵蒐指令合成器 (V2026.ULTRA 動態語義對焦版) */
+/** 🚀 [AI-Recon-Engine] 偵蒐指令合成器 (V2026.ULTRA V2.2) */
 generateReconPrompt(params) {
     const { basePoint, style, mobility, duration } = params;
     const activeTrip = (window.state && window.state.trips) ? window.state.trips.find(t => t.id === window.state.activeTripId) : null;
     const city = activeTrip ? (activeTrip.city || "日本") : "日本";
 
     return `【STRICT_RADAR_RECON / VERIFIED_ONLY】
-你是一位具備實境地理數據的偵蒐專家。請針對「${city} ${basePoint}」周邊進行半徑掃描。
+你是具備實境地理數據的旅遊專家。請針對「${city} ${basePoint}」周邊進行掃描。
 
-📍 偵蒐參數：
-1. 基準起點：${basePoint}
-2. 移動手段：${mobility}
-3. 預期時間：${duration}
-4. 偏好風格：${style} (此為嚴格閉鎖關鍵字)
+📍 搜尋參數：
+- 基準起點：${basePoint}
+- 移動方式：${mobility}
+- 預期時間：${duration}
+- 偏好風格：${style}
 
-🎯 執行協定 (Protocol)：
-1. 交叉驗證 (Cross-Check)：必須比對 Google Maps 業者標籤。嚴禁僅憑店名通靈。
-2. 品類閉鎖 (Category Lock)：僅限提供符合「${style}」實體菜單或服務的業者。若為甜點店、咖啡廳或與風格不符者，嚴禁吸入數據包。
-3. 物理對焦 (Dynamic Radius)：請根據「${mobility}」與「${duration}」自動演算合理的物理半徑。例如：步行 15min 應鎖定約 1km 內；搭車 10min 應擴散至約 3-5km 內。
+🎯 搜尋協定：
+1. 真實驗證：只提供 Google Maps 上可查到的實體業者，每筆必須附上 Google Maps 評分作為驗證依據。
+2. 品類精準：只提供符合「${style}」的業者，不符風格者（如甜點店/咖啡廳）排除。
+3. 距離計算：根據「${mobility}」與「${duration}」自動計算合理半徑（步行15分鐘≈1km；搭車10分鐘≈3-5km）。
 
-🎯 輸出指令：
-搜尋周邊 3-5 個優質節點，直接以【靈感區 JSON 陣列】格式輸出。
-- [info] 欄位格式：「${mobility}約 ${duration} | 距離${basePoint}約 XXX m」。
-- [category] 欄位：請根據業者類型精確歸類為「食/玩/購/行/住」。
-- 嚴禁 Markdown 之外的文字。
+🎯 輸出：搜尋周邊 3-5 個優質節點，以 JSON 陣列格式輸出，禁止前言。
 
-【輸出範例格式】
+【輸出格式】
 [
-  { "name": "店名", "city": "${city}", "category": "食", "info": "${mobility}約 ${duration} | 距離${basePoint}約 450m" }
-]`;
+  {
+    "name": "店名",
+    "city": "${city}",
+    "category": "食",
+    "info": "${mobility}約${duration} | 距${basePoint}約 450m",
+    "rating": 4.2,
+    "price_range": "¥800-1500",
+    "hours": "11:00-21:00（週二公休）"
+  }
+]
+
+- [category] 只能是：食/玩/購/行/住/景/史/泉/醫 其中之一。
+- [rating] 為 Google Maps 評分，純數字，無法確認填 0。
+- [price_range] 為人均消費範圍，無法確認填 ""。
+- [hours] 為營業時間，無法確認填 ""。
+- 禁止 Markdown 之外的文字。`;
 },
 
 /** 📋 [AI-Recon-Copy] 執行指令封裝複製 (100% 避開正則語法風險版) */
@@ -932,7 +936,150 @@ async importBacklogFuel() {
     } catch (err) {
         uiManager.showToast('❌', '數據格式異常');
     }
-  }
+  },
+
+/** 🤖 [AI-Planner] 多日行程分配 Prompt 生成器 */
+_generateDayPlannerPrompt(trip, selectedCards, settings) {
+    const { depType, customDep, cardLimit, daysMode, pace } = settings;
+
+    // 🚀 1. 建立每天對應飯店查詢表
+    const hotelByDay = {};
+    (trip.hotels || []).forEach(hotel => {
+        (hotel.days || []).forEach(d => {
+            hotelByDay[d] = hotel.name;
+        });
+    });
+
+    // 🚀 2. 航班偵測
+    const transport = trip.transport || [];
+    const arrivalFlight = transport.find(t => t.day === 1 && t.arrPort);
+    const totalDays = trip.days?.length || 5;
+    const departureFlight = transport.find(t => t.day === totalDays && t.depPort);
+
+    let arrivalNote = '';
+    let departureNote = '';
+
+    if (arrivalFlight) {
+        const arrTime = arrivalFlight.arrTime || '';
+        const arrPort = arrivalFlight.arrPort || '機場';
+        const carrier = arrivalFlight.carrier || '';
+        const code = arrivalFlight.code || '';
+        arrivalNote = `
+【入境航班】
+航班：${carrier} ${code}，${arrivalFlight.depPort || ''} ${arrivalFlight.depTime || ''} → ${arrPort} ${arrTime}
+⚠️ Day 1 注意：落地後需入境審查＋領行李＋交通至市區，預計抵達飯店時間約 ${arrTime} 起算 2 小時後。請將 Day 1 景點安排在下午以後，行程宜輕鬆。`;
+    }
+
+    if (departureFlight) {
+        const depTime = departureFlight.depTime || '';
+        const depPort = departureFlight.depPort || '機場';
+        const carrier = departureFlight.carrier || '';
+        const code = departureFlight.code || '';
+        // 計算需到機場時間（班機前3小時）
+        const [h, m] = depTime.split(':').map(Number);
+        const airportH = h - 3;
+        const airportTime = `${String(airportH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        departureNote = `
+【離境航班】
+航班：${carrier} ${code}，${depPort} ${depTime} → ${departureFlight.arrPort || ''} ${departureFlight.arrTime || ''}
+⚠️ Day ${totalDays} 注意：需於 ${airportTime} 前抵達 ${depPort}（班機前 3 小時），請將當天景點安排在上午且靠近機場動線，行程宜輕鬆簡短。`;
+    }
+
+    // 🚀 3. 起訖點邏輯
+    let depSection = '';
+    if (depType === 'hotel' && Object.keys(hotelByDay).length > 0) {
+        const dayLines = Array.from({ length: totalDays }, (_, idx) => {
+            const dayNum = idx + 1;
+            const todayHotel = hotelByDay[dayNum];
+            const nextHotel = hotelByDay[dayNum + 1];
+            if (!todayHotel) return `Day ${dayNum}：無飯店限制`;
+            if (nextHotel && nextHotel !== todayHotel) {
+                return `Day ${dayNum}：從「${todayHotel}」出發，晚上移動至「${nextHotel}」（換住，請安排動線順路）`;
+            }
+            return `Day ${dayNum}：從「${todayHotel}」出發，晚上回「${todayHotel}」`;
+        }).join('\n');
+        depSection = `依各天飯店位置規劃動線：\n${dayLines}`;
+    } else if (depType === 'custom' && customDep) {
+        depSection = `每天從「${customDep}」出發，最後回到「${customDep}」`;
+    } else {
+        depSection = `由 AI 依地理位置自動規劃最佳動線，不限定起訖點`;
+    }
+
+    // 🚀 4. 天數邏輯
+    let daysInstruction = '';
+    if (daysMode === 'full') {
+        daysInstruction = `完整 ${totalDays} 天（每天都要有行程規劃，即使景點已排完仍需說明當天建議安排或自由時間）`;
+    } else if (daysMode === 'hotel') {
+        const checkInOutNotes = [];
+        (trip.hotels || []).forEach(hotel => {
+            const days = hotel.days || [];
+            if (days.length > 0) {
+                checkInOutNotes.push(`${hotel.name}：Day ${days[0]} check-in，Day ${days[days.length - 1]} check-out（即前 ${days[days.length - 1] - 1} 天晚上住此飯店，Day ${days[days.length - 1]} 早上退房後仍可安排行程）`);
+            }
+        });
+        daysInstruction = `完整 ${totalDays} 天，飯店 check-in / check-out 資訊：\n${checkInOutNotes.join('\n')}`;
+    } else {
+        daysInstruction = `僅排中間有效天數（排除第一天抵達和最後一天離開），實際約 ${Math.max(totalDays - 2, 1)} 天`;
+    }
+
+    // 🚀 5. 節奏
+    const paceMap = {
+        '1': { label: '寬鬆', desc: '每天最多 2-3 個景點，留有大量自由時間' },
+        '2': { label: '舒適', desc: `每天最多 ${cardLimit} 個景點，保留足夠移動時間與用餐休息` },
+        '3': { label: '緊湊', desc: `每天最多 ${cardLimit} 個景點，行程充實緊湊` }
+    };
+    const paceInfo = paceMap[String(pace)] || paceMap['2'];
+
+    // 🚀 6. 小卡清單
+    const cardList = selectedCards.map(c =>
+        `- ID:${c.id} | 名稱:${c.name}${c.info ? ` (${c.info})` : ''} | 分類:${c.category} | 城市:${c.city}`
+    ).join('\n');
+
+    return `【STRICT_JSON_ONLY】
+你是專業旅遊行程規劃師，請將以下景點卡片合理分配到行程，輸出純 JSON，禁止前言與結語。
+${arrivalNote}${departureNote}
+
+【旅遊資訊】
+目的地：${trip.city || '日本'}
+天數：${daysInstruction}
+起訖點：${depSection}
+行程節奏：${paceInfo.label}（${paceInfo.desc}）
+每天上限：${cardLimit} 個景點
+
+【景點卡片清單（共 ${selectedCards.length} 筆）】
+${cardList}
+
+【規劃原則】
+1. 每天都必須有規劃，景點排完仍需說明當天安排（自由購物、前往機場等），寫在 [note] 欄位。
+2. 依地理位置將相近景點安排在同一天，減少往返。
+3. 每天景點數不超過 ${cardLimit} 個。
+4. 考量飯店位置，將靠近飯店的景點安排在當天首尾。
+5. 換住當天，動線從舊飯店往新飯店方向移動。
+6. check-out 當天退房後仍可安排景點。
+7. 放不下的景點列入 unscheduled 並說明原因。
+8. 節奏為${paceInfo.label}：${paceInfo.desc}。
+9. 餐食處理：禁止在 [cards] 陣列中加入非清單內的 ID，用餐時段建議請寫在 [note] 欄位。
+10. [theme] 必須使用繁體中文，10字以內。
+11. [cards] 每筆請附上建議訪問時間。
+
+【輸出格式】
+{
+  "days": [
+    {
+      "day": 1,
+      "theme": "繁體中文主題（10字內）",
+      "note": "動線說明與用餐建議",
+      "cards": [
+        { "id": "card_id_1", "suggested_time": "09:00" },
+        { "id": "card_id_2", "suggested_time": "11:30" }
+      ]
+    }
+  ],
+  "unscheduled": [
+    { "id": "card_id", "name": "景點名稱", "reason": "未排入原因" }
+  ]
+}`;
+}
 };
 
 // 🚀 執行末端強制焊接 (確保 ESM 環境下 window 依然導通)

@@ -36,37 +36,46 @@ export const syncEngine = {
         }
     },
 
-    /** 🧼 [Internal] 數據洗滌器：執行全軌道降維與純化 */
-    _sanitizeData(data) {
-        if (!data) return null;
-        const clean = JSON.parse(JSON.stringify(data));
-
-        const recursiveFlatten = (obj) => {
-            for (let key in obj) {
-                if (obj[key] === undefined || obj[key] === null) {
-                    delete obj[key];
-                    continue;
-                }
-                if (Array.isArray(obj[key])) {
-                    obj[key] = obj[key].map(el => {
-                        // 物理脫殼：將 [q, a] 二維陣列轉為具名物件以符合 Firestore 規範
-                        if (Array.isArray(el)) return { q: String(el[0] || ""), a: String(el[1] || "") };
-                        if (typeof el === 'object') return recursiveFlatten(el);
-                        return el;
-                    });
-                } else if (typeof obj[key] === 'object') {
-                    recursiveFlatten(obj[key]);
-                }
+/** 🧼 [Internal] 數據洗滌器：執行全軌道降維與純化 */
+_sanitizeData(data) {
+    if (!data) return null;
+    const clean = JSON.parse(JSON.stringify(data));
+    const recursiveFlatten = (obj) => {
+        for (let key in obj) {
+            if (obj[key] === undefined || obj[key] === null) {
+                delete obj[key];
+                continue;
             }
-            return obj;
-        };
-
-        // 執行降維與影像減壓 (100KB 熔斷)
-        const final = recursiveFlatten(clean);
-        if (final.imageUrl && final.imageUrl.length > 100000) final.imageUrl = "[Payload-Exceeded]";
-        
-        return final;
-    },
+            if (Array.isArray(obj[key])) {
+                obj[key] = obj[key].map(el => {
+                    if (Array.isArray(el)) {
+                        // 🚀 [修正] 所有純字串陣列一律轉為數字鍵物件
+                        // 涵蓋：[q,a] 2元組、edu_vocab 8元組、segments 對話等所有純字串巢狀陣列
+                        const isAllStrings = el.every(v => typeof v === 'string');
+                        if (isAllStrings) {
+                            const obj = {};
+                            el.forEach((v, i) => { obj[String(i)] = v; });
+                            return obj;
+                        }
+                        // 非純字串陣列，遞歸處理內部元素
+                        return el.map(subEl => {
+                            if (typeof subEl === 'object' && subEl !== null) return recursiveFlatten(subEl);
+                            return subEl;
+                        });
+                    }
+                    if (typeof el === 'object' && el !== null) return recursiveFlatten(el);
+                    return el;
+                });
+            } else if (typeof obj[key] === 'object') {
+                recursiveFlatten(obj[key]);
+            }
+        }
+        return obj;
+    };
+    const final = recursiveFlatten(clean);
+    if (final.imageUrl && final.imageUrl.length > 100000) final.imageUrl = "[Payload-Exceeded]";
+    return final;
+},
 
 /** 📡 物理導通：全磁區雲端同步 (V2027.ULTRA 穩壓焊接版) */
 async pushToFirebase(userId, dataPayload, stats) {
@@ -137,64 +146,96 @@ async pushToFirebase(userId, dataPayload, stats) {
 async deployToSharedZone(trip, passcode) {
     if (!dbManager.isOnline()) return { status: 'OFFLINE' };
     if (!passcode) throw new Error("共享密鑰不可為空");
-
-    // 🚀 核心預檢：確保發動機已定位使用者身分
     if (!auth.currentUser) {
         uiManager.showToast('🚫', '請先登入 Google 帳號以啟用共享功能');
         return { status: 'UNAUTHORIZED' };
     }
-
     try {
-        // 🚀 1. 生成物理座標 (8位隨機 ID)
         const shareId = Math.random().toString(36).substring(2, 10).toUpperCase();
         const shareRef = doc(db, "sharedFlows", shareId);
 
-        // 🚀 2. 燃料洗滌與主權封裝
-        const sanitizedTrip = this._sanitizeData(trip);
-        
+        // 🚀 [修正] 直接洗滌整個 payload，不再重複提取 TRANS_VAULT
+        // _sanitizeData 會遞歸處理所有巢狀陣列，轉為 Firestore 相容格式
+        const sanitizedPayload = this._sanitizeData(trip);
+
         const sharePayload = {
             shareId: shareId,
-            // 🛡️ [Security-Anchor] 寫入主權指紋：這是規則導通的關鍵
-            owner: auth.currentUser.uid, 
-            passcode: passcode, 
-            payload: sanitizedTrip,
+            owner: auth.currentUser.uid,
+            passcode: passcode,
+            payload: sanitizedPayload,
             deployedAt: Date.now(),
-            expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000), // 7天後自動冷卻
+            expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000),
             stats: {
-                dayCount: sanitizedTrip.days?.length || 0,
-                location: sanitizedTrip.city || "Unknown",
-                tripName: sanitizedTrip.name // 💡 建議同步存入名稱，方便管理清單顯示
+                dayCount: sanitizedPayload.days?.length || 0,
+                location: sanitizedPayload.city || "Unknown",
+                tripName: sanitizedPayload.name,
+                transCount: sanitizedPayload.translations?.realtime?.length || 0
             }
         };
 
-        // 🚀 3. 點火投射
         await setDoc(shareRef, sharePayload);
-        
+
         console.log(`📡 [Shared-Zone] 投射成功 | ID: ${shareId} | Owner: ${auth.currentUser.uid.substring(0,6)}...`);
         return { status: 'SUCCESS', shareId: shareId };
+
     } catch (err) {
         console.error("❌ [Shared-Zone-Collapse]:", err);
         throw err;
     }
 },
 
-    /** 🔑 [Shared] 從共享磁區回流：執行密鑰驗證 */
-    async fetchFromSharedZone(shareId, inputPasscode) {
+/** 🔑 [Shared] 從共享磁區回流：執行密鑰驗證 */
+async fetchFromSharedZone(shareId, inputPasscode) {
+    if (!dbManager.isOnline()) return { status: 'OFFLINE' };
+    try {
         const shareRef = doc(db, "sharedFlows", shareId);
         const docSnap = await getDoc(shareRef);
-
         if (!docSnap.exists()) return { status: 'NOT_FOUND' };
-
         const sharedData = docSnap.data();
-
-        // 🚀 密鑰比對
+        // 🔐 密鑰比對
         if (sharedData.passcode !== inputPasscode) {
             return { status: 'INVALID_PASSCODE' };
         }
+        // 🚀 結構還原：行程資料升維
+        const restoredTrip = this._hydrateData(sharedData.payload);
 
-        console.log(`✅ [Shared-Link] 密鑰對焦成功，開始回流行程: ${sharedData.stats.location}`);
-        return { status: 'SUCCESS', trip: sharedData.payload };
-    },
+        // 🚀 翻譯資料串還原與寫入本地 TRANS_VAULT
+        const rawVault = sharedData.translationVault || 
+                         (sharedData.payload?.translations?.realtime || []).concat(
+                          sharedData.payload?.translations?.contextual || []);
+        const restoredVault = rawVault
+            .map(item => this._hydrateData(item))
+            .filter(Boolean);
+        if (restoredVault.length > 0) {
+            for (const item of restoredVault) {
+                await dbManager.put(dbManager.STORES.TRANS_VAULT, item);
+            }
+            console.log(`💾 [Shared-Recovery] 翻譯資料已寫入本地磁區：${restoredVault.length} 筆`);
+        }
+
+        // 🚀 [新增] 靈感小卡還原與寫入本地 BACKLOG
+        const rawBacklogs = sharedData.payload?.backlogs || [];
+        if (rawBacklogs.length > 0) {
+            for (const item of rawBacklogs) {
+                if (item && item.id) {
+                    await dbManager.put(dbManager.STORES.BACKLOG, item);
+                }
+            }
+            console.log(`💾 [Shared-Recovery] 靈感小卡已寫入本地磁區：${rawBacklogs.length} 筆`);
+        }
+
+        console.log(`✅ [Shared-Link] 密鑰對焦成功，回流完畢 | 行程: ${sharedData.stats?.location} | 翻譯: ${restoredVault.length} 筆 | 靈感: ${rawBacklogs.length} 筆`);
+        return { 
+            status: 'SUCCESS', 
+            trip: restoredTrip,
+            stats: sharedData.stats,
+            transCount: restoredVault.length,
+            backlogCount: rawBacklogs.length  // 🚀 [新增]
+        };
+    } catch (err) {
+        return this._handleSyncError(err);
+    }
+},
 
     _handleSyncError(err) {
         console.error("❌ [Sync-Collapse]:", err);
@@ -202,30 +243,42 @@ async deployToSharedZone(trip, passcode) {
     },
 
 /** 🧪 [Internal] 數據升維自癒器：執行全軌道結構還原 */
-    _hydrateData(data) {
-        if (!data) return null;
-        const heavyData = JSON.parse(JSON.stringify(data));
+_hydrateData(data) {
+    if (!data) return null;
+    const heavyData = JSON.parse(JSON.stringify(data));
 
-        const recursiveHydrate = (obj) => {
-            for (let key in obj) {
-                if (Array.isArray(obj[key])) {
-                    obj[key] = obj[key].map(el => {
-                        // 🚀 核心還原：偵測具名物件 {q, a}，還原為二維陣列 [q, a]
-                        if (el && typeof el === 'object' && !Array.isArray(el) && ('q' in el)) {
+    const recursiveHydrate = (obj) => {
+        for (let key in obj) {
+            if (Array.isArray(obj[key])) {
+                obj[key] = obj[key].map(el => {
+                    if (el && typeof el === 'object' && !Array.isArray(el)) {
+                        // 🚀 軌道 A：偵測 {q, a} 具名物件，還原為 [q, a]
+                        if ('q' in el && 'a' in el && Object.keys(el).length === 2) {
                             return [el.q || "", el.a || ""];
                         }
-                        if (typeof el === 'object') return recursiveHydrate(el);
-                        return el;
-                    });
-                } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-                    recursiveHydrate(obj[key]);
-                }
+                        // 🚀 [新增] 軌道 B：偵測 edu_vocab 數字鍵物件 {"0":..., "1":...}
+                        // Firestore 不支援陣列內的陣列，8元組會被轉成數字鍵物件存入
+                        const numericKeys = Object.keys(el).filter(k => !isNaN(k));
+                        if (numericKeys.length >= 2) {
+                            // 還原為原始陣列，按數字鍵排序重組
+                            return numericKeys
+                                .sort((a, b) => Number(a) - Number(b))
+                                .map(k => el[k] ?? "");
+                        }
+                        // 其他物件繼續遞歸
+                        return recursiveHydrate(el);
+                    }
+                    return el;
+                });
+            } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+                recursiveHydrate(obj[key]);
             }
-            return obj;
-        };
+        }
+        return obj;
+    };
 
-        return recursiveHydrate(heavyData);
-    },
+    return recursiveHydrate(heavyData);
+},
 
 /** 🛰️ [Primary] 雲端磁區回流：個人數據導通 (V2027.ULTRA 終極校準版) */
 async fetchFromFirebase(userId) {
@@ -279,33 +332,6 @@ async fetchFromFirebase(userId) {
     }
 },
 
-
-    /** 🔑 [Shared] 共享磁區回流 (整合解構後的還原邏輯) */
-    async fetchFromSharedZone(shareId, inputPasscode) {
-        if (!dbManager.isOnline()) return { status: 'OFFLINE' };
-        
-        try {
-            const shareRef = doc(db, "sharedFlows", shareId);
-            const docSnap = await getDoc(shareRef);
-
-            if (!docSnap.exists()) return { status: 'NOT_FOUND' };
-            const sharedData = docSnap.data();
-
-            // 🔐 密碼指紋校驗
-            if (sharedData.passcode !== inputPasscode) return { status: 'INVALID_PASSCODE' };
-
-            // 🚀 核心對焦：利用同一個 _hydrateData 零件還原共享行程
-            const restoredPayload = this._hydrateData(sharedData.payload);
-
-            return { 
-                status: 'SUCCESS', 
-                trip: restoredPayload,
-                stats: sharedData.stats 
-            };
-        } catch (err) {
-            return this._handleSyncError(err);
-        }
-    },
 
 /** 🌐 [Shared-Management] 共享磁區管理零件 (V2026.ULTRA 穩壓版) */
 async deleteFromSharedZone(shareId) {

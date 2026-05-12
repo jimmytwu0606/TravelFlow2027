@@ -94,85 +94,43 @@ export const viewEngine = {
     },
 
 
+/** 🧪 [Internal] 衛星軌道重組發動機：根據動態日期執行物理重排 (V2026.ULTRA 版) */
 _renderSatelliteTrack(container, trip, focusDay) {
     if (!container) return;
-    const hasFlight = (trip.transport || []).some(f => Number(f.day) === Number(focusDay));
-    const hasHotel  = (trip.hotels  || []).some(h => h.days && h.days.includes(focusDay));
-    const flightFirst = hasFlight || (!hasFlight && !hasHotel);
-    const trackId = `sat-track-${focusDay}`;
 
+    // 🚀 1. 即時權重感應：判定指定日期的數據導通情況
+    const hasFlight = (trip.transport || []).some(f => Number(f.day) === Number(focusDay));
+    const hasHotel = (trip.hotels || []).some(h => h.days && h.days.includes(focusDay));
+
+    // 🏗️ 定義動態權重：有數據(10) > 無數據(0)；同分時 航班(2) > 住宿(1)
+    const priorityQueue = [
+        { id: 'transport-section', weight: hasFlight ? 12 : 2 },
+        { id: 'hotel-section', weight: hasHotel ? 11 : 1 }
+    ].sort((a, b) => b.weight - a.weight);
+
+    // 🚀 2. 物理噴發：重新接管 DOM 槽位順序
     container.innerHTML = `
-        <div id="${trackId}" style="position:relative; margin:0 20px 12px; transition:height 0.4s cubic-bezier(0.4,0,0.2,1);">
-            <div id="slot-flight-${focusDay}"
-                 style="position:absolute; left:0; right:0; border-radius:14px; overflow:hidden;
-                        transition:transform 0.4s cubic-bezier(0.4,0,0.2,1);
-                        ${flightFirst ? 'z-index:2; box-shadow:0 4px 16px rgba(0,0,0,0.08);' : 'z-index:1;'}">
-            </div>
-            <div id="slot-hotel-${focusDay}"
-                 style="position:absolute; left:0; right:0; border-radius:14px; overflow:hidden;
-                        transition:transform 0.4s cubic-bezier(0.4,0,0.2,1);
-                        ${!flightFirst ? 'z-index:2; box-shadow:0 4px 16px rgba(0,0,0,0.08);' : 'z-index:1;'}">
-            </div>
+        <div id="satellite-scroll-track" 
+             class="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory px-5 pb-3">
+            ${priorityQueue.map(slot => `
+                <div id="${slot.id}" class="flex-none w-[88vw] snap-center"></div>
+            `).join('')}
+        </div>
+        
+        <!-- 導引點同步感應 -->
+        <div class="flex justify-center gap-1.5 -mt-1 opacity-20 pointer-events-none">
+            <div class="w-1 h-1 rounded-full ${hasFlight ? 'theme-bg opacity-100' : 'bg-slate-400'}"></div>
+            <div class="w-1 h-1 rounded-full ${hasHotel ? 'theme-bg opacity-100' : 'bg-slate-400'}"></div>
         </div>
     `;
 
-    this.renderTransportCard(document.getElementById(`slot-flight-${focusDay}`), trip, focusDay);
-    this.renderHotelCard(document.getElementById(`slot-hotel-${focusDay}`), trip, focusDay);
+    // 🚀 3. 數據回填：對焦最新槽位執行渲染
+    this.renderTransportCard(document.getElementById('transport-section'), trip, focusDay);
+    this.renderHotelCard(document.getElementById('hotel-section'), trip, focusDay);
 
-requestAnimationFrame(() => {
-    setTimeout(() => {
-        this._layoutSatelliteCards(focusDay, flightFirst ? 'flight' : 'hotel');
-    }, 150);
-});
-},
-
-_switchSatelliteCard(focusDay, bringToFront) {
-    this._layoutSatelliteCards(focusDay, bringToFront, true);
-},
-
-_layoutSatelliteCards(focusDay, active) {
-    const track      = document.getElementById(`sat-track-${focusDay}`);
-    const slotFlight = document.getElementById(`slot-flight-${focusDay}`);
-    const slotHotel  = document.getElementById(`slot-hotel-${focusDay}`);
-    if (!track || !slotFlight || !slotHotel) return;
-
-    const PEEK = 44;
-
-    // 先把兩個都解除限制，量真實高度
-    slotFlight.style.height   = 'auto';
-    slotFlight.style.overflow = 'hidden';
-    slotHotel.style.height    = 'auto';
-    slotHotel.style.overflow  = 'hidden';
-
-    const flightH = slotFlight.scrollHeight;
-    const hotelH  = slotHotel.scrollHeight;
-
-    if (active === 'flight') {
-        slotFlight.style.zIndex    = '2';
-        slotFlight.style.transform = 'translateY(0)';
-        slotFlight.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)';
-        slotFlight.style.height    = flightH + 'px';
-
-        slotHotel.style.zIndex     = '1';
-        slotHotel.style.transform  = `translateY(${flightH}px)`;
-        slotHotel.style.boxShadow  = 'none';
-        slotHotel.style.height     = PEEK + 'px';
-
-        track.style.height = (flightH + PEEK) + 'px';
-
-    } else {
-        slotHotel.style.zIndex     = '2';
-        slotHotel.style.transform  = 'translateY(0)';
-        slotHotel.style.boxShadow  = '0 4px 16px rgba(0,0,0,0.08)';
-        slotHotel.style.height     = hotelH + 'px';
-
-        slotFlight.style.zIndex    = '1';
-        slotFlight.style.transform = `translateY(${hotelH}px)`;
-        slotFlight.style.boxShadow = 'none';
-        slotFlight.style.height    = PEEK + 'px';
-
-        track.style.height = (hotelH + PEEK) + 'px';
-    }
+    // 🚀 4. 滾動強制歸位：確保視野鎖定在權重最高者
+    const track = document.getElementById('satellite-scroll-track');
+    if (track) track.scrollLeft = 0;
 },
 
 /** 詳情頁導播：主框架焊接 (已導入動態軌道槽位) */
@@ -206,81 +164,76 @@ renderTripDetail(container, trip) {
 renderBottomDock(container, activeView) {
     if (!container) return;
 
+    // 🚀 1. 導航路網配置 (維持 11 鈕英雄位)
     const allNavs = [
-        { id: 'detail',     label: '行程',  icon: 'fa-solid fa-map-pin' },
-        { id: 'expense',    label: '開銷',  icon: 'fa-solid fa-yen-sign' },
-        { id: 'checklist',  label: '清單',  icon: 'fa-solid fa-list-check' },
-        { id: 'realtime',   label: '即時',  icon: 'fa-solid fa-microphone' },
-        { id: 'training',   label: '特訓',  icon: 'fa-solid fa-fire' },
-        { id: 'contextual', label: '情境',  icon: 'fa-solid fa-book-open' },
-        { id: 'shopping',   label: '購物',  icon: 'fa-solid fa-bag-shopping' },
-        { id: 'emergency',  label: '緊急',  icon: 'fa-solid fa-kit-medical' },
-        { id: 'backlog',    label: '靈感',  icon: 'fa-solid fa-lightbulb' },
-        { id: 'backup',     label: '備份',  icon: 'fa-solid fa-cloud' },
-        { id: 'settings',   label: '設定',  icon: 'fa-solid fa-gear' },
+        { id: 'detail',     label: '📍 行程' }, 
+        { id: 'expense',    label: '💰 開銷' },
+        { id: 'checklist',  label: '🎒 清單' }, 
+        { id: 'realtime',   label: '🎙️ 即時' },
+        { id: 'training',   label: '🔥 特訓' }, 
+        { id: 'contextual', label: '📖 情境' },
+        { id: 'shopping',   label: '🛒 購物' }, 
+        { id: 'emergency',  label: '🆘 緊急' }, 
+        { id: 'backlog',    label: '🏭 靈感' },
+        { id: 'backup',     label: '☁️ 備份' }, 
+        { id: 'settings',   label: '⚙️ 設定' }
     ];
 
+    // 💡 職人參數校準：
+    // 將 btnWidth 從 100 提升至 115，為大字級預留物理空間
+    const btnWidth = 115; 
+
     container.innerHTML = `
-        <div style="
-    position: fixed; bottom: 0; left: 0; right: 0;
-    z-index: 5000;
-    background: rgba(255,255,255,0.82);
-    backdrop-filter: blur(20px) saturate(1.8);
-    -webkit-backdrop-filter: blur(20px) saturate(1.8);
-    border-top: 0.5px solid rgba(212,83,126,0.15);
-    padding: 10px 0 max(20px, env(safe-area-inset-bottom));
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    will-change: transform;
-">
-            <div id="nav-scroll-track" style="
-                display: flex;
-                overflow-x: auto;
-                overflow-y: hidden;
-                -webkit-overflow-scrolling: touch;
-                touch-action: pan-x;
-                scroll-snap-type: x proximity;
-                padding: 0 16px;
-                gap: 0px;
-                scrollbar-width: none;
-            " onwheel="event.preventDefault(); this.scrollLeft += event.deltaY;">
-                <style>#nav-scroll-track::-webkit-scrollbar{display:none}</style>
-                ${allNavs.map(item => {
-                    const isActive = activeView === item.id || (item.id === 'contextual' && activeView === 'translate');
-                    const isTraining = item.id === 'training';
-                    return `
-                    <button onclick="App.navigateTo('${item.id}')"
-                            id="nav-btn-${item.id}"
-                            style="
-                                position: relative;
-                                flex-shrink: 0;
-                                display: flex; flex-direction: column; align-items: center; gap: 5px;
-                                padding: 10px 20px;
-                                border-radius: 16px; border: none; cursor: pointer;
-                                background: ${isActive ? '#FBEAF0' : 'transparent'};
-                                transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
-                                scroll-snap-align: center;
-                                -webkit-tap-highlight-color: transparent;
-                                min-width: 64px;
-                            "
-                            onmousedown="this.style.transform='scale(0.88)'"
-                            onmouseup="this.style.transform='scale(1)'"
-                            ontouchstart="this.style.transform='scale(0.88)'; if(navigator.vibrate) navigator.vibrate(8);"
-                            ontouchend="this.style.transform='scale(1)'">
-                        <i class="${item.icon}" style="font-size: 24px; color: ${isActive ? '#D4537E' : '#B4B2A9'};"></i>
-                        <span style="font-size: 16px; font-weight: 700; white-space: nowrap; color: ${isActive ? '#D4537E' : '#B4B2A9'};">${item.label}</span>
-                        ${isTraining && !isActive ? '<span style="position:absolute;top:8px;right:12px;width:7px;height:7px;border-radius:50%;background:#E24B4A;display:block;"></span>' : ''}
-                    </button>`;
-                }).join('')}
-            </div>
+        <div class="fixed bottom-0 inset-x-0 z-[101] pointer-events-none flex flex-col h-28">
+            <div class="h-10 bg-gradient-to-t from-white to-transparent"></div>
+            <div class="flex-grow bg-white"></div>
         </div>
-        <div style="height: 110px;"></div>
+
+        <nav id="bottom-dock" 
+             class="fixed bottom-8 inset-x-0 z-[5000] px-4 animate-slide-up flex justify-center items-center gap-2">
+            
+            <button onclick="document.getElementById('nav-scroll-track').scrollBy({left: -200, behavior: 'smooth'})"
+                    class="w-11 h-11 shrink-0 bg-white border border-slate-100 rounded-full shadow-lg flex items-center justify-center text-slate-400 active:scale-90 transition-all pointer-events-auto">
+                <span class="font-black text-lg">‹</span>
+            </button>
+
+            <div id="nav-scroll-track" 
+                 style="background-color: #ffffff; box-shadow: 0 -15px 50px -10px var(--theme-shadow); scroll-behavior: smooth;"
+                 class="w-full max-w-lg border border-slate-100 rounded-[2.8rem] p-2.5 flex overflow-x-auto no-scrollbar pointer-events-auto touch-pan-x">
+                
+                <div id="nav-carrier" class="flex flex-nowrap items-center gap-1.5 w-max px-2">
+                    ${allNavs.map(item => {
+                        const isActive = activeView === item.id || (item.id === 'contextual' && activeView === 'translate');
+                        const isHero = item.id === 'training';
+                        const heroClass = isHero && !isActive ? 'animate-pulse' : '';
+
+                        return `
+                        <div class="shrink-0" style="width: ${btnWidth}px;">
+                            <button id="nav-btn-${item.id}"
+                                    onclick="App.navigateTo('${item.id}')" 
+                                    class="w-full h-14 flex items-center justify-center rounded-[2rem] transition-all duration-300 active:scale-95 ${heroClass}
+                                    ${isActive ? 'theme-bg text-white shadow-xl scale-[1.05]' : 'bg-transparent text-slate-500 font-black hover:bg-slate-50'}">
+                                <span class="text-[14px] font-black tracking-tight whitespace-nowrap">${item.label}</span>
+                            </button>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>
+
+            <button onclick="document.getElementById('nav-scroll-track').scrollBy({left: 200, behavior: 'smooth'})"
+                    class="w-11 h-11 shrink-0 bg-white border border-slate-100 rounded-full shadow-lg flex items-center justify-center text-slate-400 active:scale-90 transition-all pointer-events-auto">
+                <span class="font-black text-lg">›</span>
+            </button>
+        </nav>
     `;
 
     this.focusNavBtn(activeView);
 },
 
+
+/** 🧬 物理補償：底欄標籤置中對焦 (11 鈕廣域對焦版) */
 focusNavBtn(activeView) {
+    // 🚀 關鍵對焦：針對 'translate' 視圖進行語義重導向，確保 ID 對位
     const viewId = (activeView === 'translate') ? 'contextual' : activeView;
 
     requestAnimationFrame(() => {
@@ -289,19 +242,29 @@ focusNavBtn(activeView) {
         
         if (!activeBtn || !track) return;
 
+        // 🚀 1. 座標採集：獲取 carrierCell 的絕對物理座標
+        const carrierCell = activeBtn.parentElement;
         const trackWidth = track.clientWidth;
-        const btnOffset = activeBtn.offsetLeft;
-        const btnWidth = activeBtn.offsetWidth;
+        const btnOffset = carrierCell.offsetLeft;
+        const btnWidth = carrierCell.offsetWidth;
 
+        // 🚀 2. 邊際補償計算 (Boundary Stabilization)
+        // 💡 職人診斷：計算目標位置，並使用 Math.max 封殺負數位移，防止首站抖動
         let scrollTarget = btnOffset - (trackWidth / 2) + (btnWidth / 2);
+        
+        // 確保捲動目標不會小於 0 (首部對焦)
         scrollTarget = Math.max(0, scrollTarget);
-        scrollTarget = Math.min(scrollTarget, track.scrollWidth - trackWidth);
+        
+        // 確保捲動目標不會超過最大可捲動寬度 (尾部對焦)
+        const maxScroll = track.scrollWidth - trackWidth;
+        scrollTarget = Math.min(scrollTarget, maxScroll);
 
+        // 🚀 3. 執行物理導通
         track.scrollTo({
             left: scrollTarget,
             behavior: 'smooth'
         });
-
+        
         console.log(`🧭 [UI-Focus] 導航對焦軌道: ${viewId} | Target: ${Math.round(scrollTarget)}px`);
     });
 },
@@ -407,120 +370,69 @@ _renderVisualEditorContent(item) {
                  '<span data-field="expense" contenteditable="true" spellcheck="false" onblur="window.App.syncCodeFromVisual()" $1>');
 },
 
+/** 🛍️ [Sub-Engine] 購物燃料預覽生成器 (V2026.ULTRA 數據洗滌版) */
 _renderShoppingFuelPreview(products) {
     let total = 0;
     const itemsHtml = products.map((p, idx) => {
+        // 🚀 數據預處理：物理切除已汙染的重複 @ 符號，並處理數值真值
         const cleanStore = String(p.store || '').replace(/^[@\s]+/, '').trim();
         const price = (p.price !== undefined && p.price !== null) ? Number(String(p.price).replace(/,/g, '')) : 0;
         const qty = (p.quantity !== undefined && p.quantity !== null && String(p.quantity).trim() !== "") ? Number(p.quantity) : 1;
-
+        
         total += (price * qty);
+
         return `
-            <div class="shopping-fuel-box animate-fade-in"
-                 style="${idx > 0 ? 'margin-top: 20px; padding-top: 20px; border-top: 1px dashed #E2E8F0;' : 'margin-top: 8px;'}">
-
-                <!-- 商品名稱 + 價格 -->
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-                    <div style="flex: 1; min-width: 0;">
-                        <h4 data-field="name" data-index="${idx}"
-                            style="
-                                font-size: 14px; font-weight: 700;
-                                color: #1a1a1a; line-height: 1.4;
-                                word-break: break-word; margin: 0;
-                                outline: none;
-                            "
-                            contenteditable="true" spellcheck="false"
+            <div class="shopping-fuel-box ${idx > 0 ? 'mt-6 pt-6 border-t border-slate-50' : 'mt-2'} space-y-3 animate-fade-in">
+                <div class="flex justify-between items-start">
+                    <div class="flex-1 min-w-0">
+                        <h4 data-field="name" data-index="${idx}" 
+                            class="text-[14px] font-black text-slate-800 tracking-tight leading-tight truncate outline-none" 
+                            contenteditable="true" spellcheck="false" 
                             onblur="window.App.syncCodeFromVisual()">${p.name || '未命名商品'}</h4>
-
-                        <!-- 購買地點 -->
-                        <p style="margin: 6px 0 0; display: flex; align-items: center; gap: 3px;">
-                            <i class="fa-solid fa-location-dot" style="font-size: 10px; color: #D4537E;"></i>
-                            <span data-field="store" data-index="${idx}"
-                                  style="
-                                      font-size: 11px; font-weight: 600; color: #D4537E;
-                                      outline: none;
-                                  "
-                                  contenteditable="true" spellcheck="false"
+                        
+                        <!-- 🚀 關鍵修正：將 @ 移出 data-field 範圍，防止同步回寫時抓取裝飾符號 -->
+                        <p class="text-[10px] theme-text-pink font-bold mt-1">
+                            <span class="opacity-50">@</span> 
+                            <span data-field="store" data-index="${idx}" 
+                                  class="outline-none" 
+                                  contenteditable="true" spellcheck="false" 
                                   onblur="window.App.syncCodeFromVisual()">${cleanStore || '未指定商店'}</span>
                         </p>
                     </div>
-
-                    <!-- 價格 + 數量 -->
-                    <div style="text-align: right; flex-shrink: 0;">
-                        <p style="
-                            font-size: 14px; font-weight: 800;
-                            color: #D4537E; font-variant-numeric: tabular-nums; margin: 0;
-                        ">¥<span data-field="price" data-index="${idx}"
-                               style="outline: none;"
-                               contenteditable="true"
-                               onblur="window.App.syncCodeFromVisual()">${price.toLocaleString()}</span></p>
-                        <p style="
-                            font-size: 10px; font-weight: 700;
-                            color: #B4B2A9; margin: 3px 0 0;
-                            letter-spacing: 0.03em;
-                        ">× <span data-field="quantity" data-index="${idx}"
-                                  style="outline: none;"
-                                  contenteditable="true"
-                                  onblur="window.App.syncCodeFromVisual()">${qty}</span></p>
+                    
+                    <div class="text-right shrink-0 ml-4">
+                        <p class="text-[13px] font-black text-slate-700 tabular-nums">
+                            ¥<span data-field="price" data-index="${idx}" 
+                                   class="outline-none" contenteditable="true" 
+                                   onblur="window.App.syncCodeFromVisual()">${price.toLocaleString()}</span>
+                        </p>
+                        <p class="text-[9px] font-black text-slate-300 uppercase mt-0.5">
+                            QTY: <span data-field="quantity" data-index="${idx}" 
+                                       class="outline-none" contenteditable="true" 
+                                       onblur="window.App.syncCodeFromVisual()">${qty}</span>
+                        </p>
                     </div>
                 </div>
 
-                <!-- 購買提示 -->
                 ${p.info ? `
-                <details style="margin-top: 8px;">
-                    <summary style="
-                        list-style: none; cursor: pointer; user-select: none;
-                        display: inline-flex; align-items: center; gap: 5px;
-                    ">
-                        <span style="
-                            display: inline-flex; align-items: center; justify-content: center;
-                            width: 16px; height: 16px; border-radius: 50%;
-                            background: #F1EFE8; color: #888780; font-size: 8px;
-                        "><i class="fa-solid fa-chevron-down"></i></span>
-                        <span style="
-                            font-size: 11px; font-weight: 700; color: #5F5E5A;
-                            letter-spacing: 0.04em;
-                        ">購買提示</span>
-                    </summary>
-                    <div style="
-                        margin-top: 8px;
-                        background: #FFFBEB;
-                        border-left: 3px solid #F59E0B;
-                        border-radius: 0 8px 8px 0;
-                        padding: 10px 12px 10px 36px;
-                        position: relative;
-                    ">
-                        <i class="fa-solid fa-circle-info" style="
-                            position: absolute; left: 12px; top: 12px;
-                            font-size: 12px; color: #D97706;
-                        "></i>
-                        <p data-field="info" data-index="${idx}"
-                           style="
-                               font-size: 13px; font-weight: 500;
-                               color: #451A03; line-height: 1.7; margin: 0;
-                               word-break: break-word; outline: none;
-                           "
-                           contenteditable="true" spellcheck="false"
-                           onblur="window.App.syncCodeFromVisual()">${p.info}</p>
-                    </div>
-                </details>` : ''}
+                <div class="bg-slate-50/80 rounded-2xl p-4 border border-slate-100/50">
+                    <p data-field="info" data-index="${idx}" 
+                       class="text-[11px] text-slate-500 leading-relaxed italic font-medium outline-none" 
+                       contenteditable="true" spellcheck="false" 
+                       onblur="window.App.syncCodeFromVisual()">${p.info}</p>
+                </div>` : ''}
             </div>`;
     }).join('');
 
     return `
         <div class="shopping-preview-container">
             ${itemsHtml}
-            <div style="
-                margin-top: 24px; padding-top: 16px;
-                border-top: 1.5px solid #E2E8F0;
-                display: flex; justify-content: flex-end; align-items: baseline; gap: 6px;
-            ">
-                <span style="font-size: 10px; font-weight: 700; color: #888780; letter-spacing: 0.04em;">購物小計</span>
-                <span style="font-size: 11px; font-weight: 800; color: #D4537E;">¥</span>
-                <span style="
-                    font-size: 20px; font-weight: 800; color: #D4537E;
-                    font-variant-numeric: tabular-nums;
-                ">${total.toLocaleString()}</span>
+            <div class="mt-8 pt-5 border-t-2 border-slate-50 text-right pr-2">
+                <p class="text-[10px] font-black text-slate-300 uppercase tracking-tighter italic mb-1">Cart Total</p>
+                <div class="inline-flex items-baseline gap-1">
+                    <span class="text-[10px] font-black theme-text-pink">¥</span>
+                    <span class="text-xl font-black theme-text-pink tracking-tight">${total.toLocaleString()}</span>
+                </div>
             </div>
         </div>`;
 },
@@ -812,22 +724,18 @@ renderSettings(container, activeTab = 'visual') {
         ? this._renderVisualTab(settings) 
         : this._renderAcousticTab(settings);
 
-container.innerHTML = `
+    container.innerHTML = `
         <div class="settings-module animate-fade-in space-y-6 pb-32">
             <div class="bg-white/90 backdrop-blur-xl sticky top-0 z-[100] px-4 py-2 flex border-b border-slate-50 shadow-sm">
                 ${tabsHTML}
             </div>
+
             <div class="px-4 space-y-6">
                 ${contentHTML}
                 ${this._renderSystemStatus()}
             </div>
         </div>
     `;
-
-    // 聲學診斷面板資料初始化
-    if (activeTab === 'acoustic') {
-        requestAnimationFrame(() => App._initAcousticDiagnosticPanel());
-    }
 },
 
 
@@ -846,86 +754,45 @@ _renderAcousticTab(s) {
     `;
 },
 
+/** 🛰️ 子組件：聲學物理診斷中樞 (Debug Valve Control) */
 _renderAcousticDiagnosticModule() {
     const isDebugActive = localStorage.getItem('TF_DEBUG') === 'true';
+    
     return `
         <div class="mt-4 pt-6 border-t border-slate-100 animate-fade-in">
-            <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;">
-
-                <!-- 標題列 -->
-                <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid var(--color-border-tertiary);">
-                    <div>
-                        <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0;">聲學診斷</p>
-                        <p style="font-size:11px;color:var(--color-text-secondary);margin:2px 0 0;">Acoustic logic debugger</p>
+            <div class="bg-slate-800 rounded-[2.2rem] p-6 shadow-xl shadow-slate-200">
+                <div class="flex items-center justify-between mb-4 px-1">
+                    <div class="min-w-0">
+                        <h4 class="text-xs font-black text-white tracking-tight">系統聲學物理診斷</h4>
+                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-0.5">Acoustic Logic Debugger</p>
                     </div>
-                    <button onclick="App.toggleAcousticDebug()"
-                            style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:500;background:${isDebugActive ? '#FBEAF0' : 'var(--color-background-secondary)'};color:${isDebugActive ? '#993556' : 'var(--color-text-secondary)'};border:0.5px solid ${isDebugActive ? '#F4C0D1' : 'var(--color-border-tertiary)'};border-radius:var(--border-radius-md);padding:6px 12px;cursor:pointer;transition:all 0.15s;">
-                        <span style="width:6px;height:6px;border-radius:50%;background:${isDebugActive ? '#D4537E' : 'var(--color-text-tertiary)'};display:inline-block;"></span>
-                        ${isDebugActive ? '停止監控' : '啟動剖析'}
+                    <button onclick="App.toggleAcousticDebug()" 
+                            class="shrink-0 px-5 py-2.5 rounded-xl text-[10px] font-black transition-all active:scale-95 shadow-sm
+                            ${isDebugActive ? 'bg-rose-500 text-white animate-pulse' : 'bg-white text-slate-800'}">
+                        ${isDebugActive ? '🔴 停止監控' : '🟢 啟動剖析'}
                     </button>
                 </div>
-
-                <!-- 狀態列 -->
-                <div style="padding:10px 16px;background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:8px;">
-                    <span style="width:6px;height:6px;border-radius:50%;background:${isDebugActive ? '#639922' : 'var(--color-text-tertiary)'};flex-shrink:0;"></span>
-                    <p style="font-size:11px;color:var(--color-text-secondary);margin:0;">
-                        ${isDebugActive ? '總線攔截中，時序熱圖與語調輪廓已導通至 F12。' : '啟動後將掛載攔截器至 TTS 總線，偵測長句與標點異常。'}
+                
+                <div class="bg-black/20 rounded-2xl p-4 border border-white/5">
+                    <p class="text-[10px] text-slate-300 leading-relaxed font-medium">
+                        ${isDebugActive 
+                            ? '🛰️ <span class="text-emerald-400 font-black">總線攔截中</span>：時序熱圖與語調輪廓已導通至 F12 Console。' 
+                            : '啟動後將掛載攔截器至 TTS 總線，偵測起音、緩落與標點 Glitch。'}
                     </p>
                 </div>
-
-                <!-- 學習庫快照 -->
-                <div style="padding:14px 16px;border-bottom:0.5px solid var(--color-border-tertiary);">
-                    <p style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em;">學習庫快照</p>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-                        <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;">
-                            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px;">窒息記錄</p>
-                            <p style="font-size:20px;font-weight:500;color:var(--color-text-primary);margin:0;" id="dm-choke-count">載入中</p>
-                        </div>
-                        <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;">
-                            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px;">建議閾值</p>
-                            <p style="font-size:20px;font-weight:500;color:var(--color-text-primary);margin:0;" id="dm-threshold">載入中</p>
-                        </div>
+                
+                <div class="mt-4 flex items-center justify-between px-1">
+                    <div class="flex items-center gap-2">
+                        <div class="w-1.5 h-1.5 rounded-full ${isDebugActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}"></div>
+                        <span class="text-[8px] font-black text-slate-500 uppercase tracking-widest">
+                            Layer: ${isDebugActive ? 'Intercepting' : 'Standby'}
+                        </span>
                     </div>
-
-                    <p style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em;">高頻觸發詞</p>
-                    <div id="dm-trigger-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
-                    <button onclick="App.clearAcousticLearning()"
-                            style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:5px 10px;cursor:pointer;">
-                        <i class="fa-solid fa-trash-can" style="font-size:11px;"></i> 清除學習庫
-                    </button>
-                </div>
-
-                <!-- 窒息記錄列表 -->
-                <div style="padding:14px 16px;border-bottom:0.5px solid var(--color-border-tertiary);">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                        <p style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin:0;text-transform:uppercase;letter-spacing:0.05em;">窒息記錄（可勾選）</p>
-                        <div style="display:flex;gap:6px;">
-                            <button onclick="App.selectAllChokeRecords()"
-                                    style="font-size:10px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px;background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);cursor:pointer;">
-                                全選
-                            </button>
-                            <button onclick="App.copySelectedChokeRecords()" id="dm-copy-sel-btn"
-                                    style="font-size:10px;padding:3px 8px;display:none;align-items:center;gap:4px;background:#FBEAF0;color:#993556;border:0.5px solid #F4C0D1;border-radius:var(--border-radius-md);cursor:pointer;">
-                                <i class="fa-solid fa-copy" style="font-size:11px;"></i> 複製選取
-                            </button>
-                        </div>
-                    </div>
-                    <div id="dm-choke-list"></div>
-                </div>
-
-                <!-- 底部 -->
-                <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;">
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <span style="width:5px;height:5px;border-radius:50%;background:#639922;"></span>
-                        <span style="font-size:11px;color:var(--color-text-secondary);">Core rendering: stable</span>
-                    </div>
-                    <button onclick="App.copyAllChokeRecords()"
-                            style="font-size:10px;padding:4px 10px;display:inline-flex;align-items:center;gap:4px;background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);cursor:pointer;">
-                        <i class="fa-solid fa-copy" style="font-size:11px;"></i> 一鍵複製全部
-                    </button>
+                    <span class="text-[7px] font-bold text-slate-600 uppercase tabular-nums">V5.0.ULTRA_DEBUG</span>
                 </div>
             </div>
-        </div>`;
+        </div>
+    `;
 },
 
 /** 🔘 子組件：聲學語系切換撥盤 (Acoustic Switcher) */
@@ -1392,118 +1259,89 @@ renderOverviewCard(trip) {
     `;
 },
 
+/** ✈️ 衛星組件 A：航班縮圖卡 (V2026.ULTRA 航司識別版) */
 renderTransportCard(container, trip, focusDay = 1) {
     if (!container) return;
-    if (!trip) { container.innerHTML = ""; return; }
+
+    if (!trip) {
+        container.innerHTML = "";
+        return;
+    }
 
     const allFlights = Array.isArray(trip.transport) ? trip.transport : [];
     const todaysFlights = allFlights.filter(f => Number(f.day) === Number(focusDay));
     container.classList.remove('hidden');
     const f = todaysFlights.length > 0 ? todaysFlights[0] : null;
 
+    // 🚀 數據解析：提領航司與班號數據
     const carrier = f?.carrier || '--';
     const code = f?.code || '--';
 
-const peekBar = `
-    <div onclick="(function(e){
-            e.stopPropagation();
-            const slot = document.getElementById('slot-flight-${focusDay}');
-            if (slot && slot.style.zIndex === '1') {
-                viewEngine._switchSatelliteCard('${focusDay}', 'flight');
-            } else {
-                viewEngine._switchSatelliteCard('${focusDay}', 'hotel');
-            }
-         })(event)"
-         style="display:flex; align-items:center; justify-content:space-between;
-                padding:0 16px; height:44px; cursor:pointer;
-                background:#185FA5; font-size:12px; font-weight:600; color:#E6F1FB;">
-        <span><i class="fa-solid fa-bed" style="font-size:13px; margin-right:6px;"></i>下榻住宿</span>
-        <i class="fa-solid fa-chevron-up" style="font-size:12px; opacity:0.7;"></i>
-    </div>`;
-
     container.innerHTML = `
-        <div style="background:white; border-radius:14px; border:0.5px solid #E2E8F0; overflow:hidden;">
-
-            <!-- header 點擊進編輯 -->
-            <div onclick="App.promptEditTransport('${trip.id}')"
-                 style="background:#D4537E; border-radius:13px 13px 0 0; padding:10px 16px 11px;
-                        display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <i class="fa-solid fa-plane-departure" style="font-size:17px; color:#FBEAF0;"></i>
-                    <div>
-                        <div style="font-size:13px; font-weight:600; color:#FBEAF0;">${carrier}</div>
-                        <div style="font-size:12px; color:#F4C0D1; letter-spacing:0.04em;">${code}</div>
-                    </div>
+        <div onclick="App.promptEditTransport('${trip.id}')" 
+             class="relative bg-white p-5 rounded-[2.2rem] border border-slate-100 shadow-sm hover:shadow-md ring-1 ring-slate-100/50 cursor-pointer transition-all duration-500 active:scale-95 h-full animate-fade-in group overflow-visible">
+            
+            <!-- 🚀 標頭區：航司、班號與日期並列導通 -->
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center gap-1.5">
+                    <!-- 日期標籤 -->
+                    <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2.5 py-1 rounded-full italic uppercase shadow-sm">D${focusDay}</span>
+                    
+                    ${f ? `
+                        <!-- 航空公司標籤 (與日期等大) -->
+                        <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2.5 py-1 rounded-full uppercase shadow-sm border border-pink-100/50">${carrier}</span>
+                        <!-- 班機編號標籤 (與日期等大) -->
+                        <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2.5 py-1 rounded-full tabular-nums shadow-sm border border-pink-100/50">${code}</span>
+                    ` : `
+                        <span class="text-[9px] font-black text-slate-300 uppercase tracking-widest ml-1">航班路網</span>
+                    `}
                 </div>
-                <span style="font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; background:#FBEAF0; color:#993556;">D${focusDay}</span>
+                <div class="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center group-hover:bg-pink-50 transition-colors duration-500">
+                    <span class="text-xs group-hover:rotate-12 transition-transform">✈️</span>
+                </div>
             </div>
 
-            ${f ? `
-            <!-- 主體點擊進編輯 -->
-            <div onclick="App.promptEditTransport('${trip.id}')" style="padding:16px 16px 18px; cursor:pointer;">
-                <div style="display:flex; align-items:flex-start; margin-bottom:14px;">
-                    <div style="flex:1;">
-                        <div style="font-size:13px; font-weight:600; color:#1a1a1a; line-height:1.3;">${f.depPort || '--'}</div>
-                        ${f.depTerminal ? `<div style="font-size:11px; color:#D4537E; font-weight:500; margin-top:3px;">${f.depTerminal}</div>` : ''}
-                    </div>
-                    <div style="flex:0 0 52px; display:flex; flex-direction:column; align-items:center; padding-top:2px; gap:4px;">
-                        <div style="display:flex; align-items:center; width:100%;">
-                            <div style="width:4px; height:4px; border-radius:50%; background:#ED93B1; flex-shrink:0;"></div>
-                            <div style="flex:1; border-top:1.5px dashed #ED93B1;"></div>
-                            <i class="fa-solid fa-plane" style="font-size:14px; color:#D4537E; flex-shrink:0;"></i>
-                            <div style="flex:1; border-top:1.5px dashed #ED93B1;"></div>
-                            <div style="width:4px; height:4px; border-radius:50%; background:#ED93B1; flex-shrink:0;"></div>
+            <div class="relative w-full">
+                ${f ? `
+                    <div class="flex justify-between items-center gap-2">
+                        <!-- 去程：數據對焦 -->
+                        <div class="flex flex-col items-start min-w-0 flex-[1.4]">
+                            <p class="text-[14px] font-black text-slate-800 leading-tight break-words w-full mb-1">${f.depPort || '--'}</p>
+                            <p class="text-[16px] theme-text-pink font-black tabular-nums tracking-tighter leading-none">${f.depTime || '--:--'}</p>
+                            <p class="text-[7px] text-slate-500 font-black uppercase tracking-widest mt-1">Departure</p>
+                        </div>
+                        
+                        <!-- 實境符號：主題單向箭頭 -->
+                        <div class="flex flex-col items-center px-1 shrink-0 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500">
+                            <svg class="w-5 h-5 theme-text-pink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                            </svg>
+                        </div>
+
+                        <!-- 抵達：數據對焦 -->
+                        <div class="flex flex-col items-end min-w-0 flex-[1.4]">
+                            <p class="text-[14px] font-black text-slate-800 leading-tight break-words w-full text-right mb-1">${f.arrPort || '--'}</p>
+                            <p class="text-[16px] theme-text-pink font-black tabular-nums tracking-tighter leading-none">${f.arrTime || '--:--'}</p>
+                            <p class="text-[7px] text-slate-500 font-black uppercase tracking-widest mt-1 text-right">Arrival</p>
                         </div>
                     </div>
-                    <div style="flex:1; text-align:right;">
-                        <div style="font-size:13px; font-weight:600; color:#1a1a1a; line-height:1.3;">${f.arrPort || '--'}</div>
+                ` : `
+                    <div class="flex flex-col items-center py-2 justify-center opacity-30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sector Vacuum</p>
+                        <p class="text-[8px] font-bold text-slate-300 italic mt-0.5">點擊配置數據</p>
                     </div>
-                </div>
-                <div style="display:flex; align-items:flex-end;">
-                    <div style="flex:1;">
-                        <div style="font-size:36px; font-weight:600; color:#D4537E; font-variant-numeric:tabular-nums; letter-spacing:-0.03em; line-height:1;">${f.depTime || '--:--'}</div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-top:4px;">Departure</div>
-                    </div>
-                    <div style="flex:0 0 52px;"></div>
-                    <div style="flex:1; text-align:right;">
-                        <div style="font-size:36px; font-weight:600; color:#D4537E; font-variant-numeric:tabular-nums; letter-spacing:-0.03em; line-height:1;">${f.arrTime || '--:--'}</div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-top:4px;">Arrival</div>
-                    </div>
-                </div>
+                `}
             </div>
-            <div style="display:flex; align-items:center; margin:0 -1px;">
-                <div style="width:16px; height:16px; border-radius:50%; background:#F8FAFC; border:0.5px solid #E2E8F0; flex-shrink:0; z-index:1;"></div>
-                <div style="flex:1; border-top:1.5px dashed #E2E8F0;"></div>
-                <div style="width:16px; height:16px; border-radius:50%; background:#F8FAFC; border:0.5px solid #E2E8F0; flex-shrink:0; z-index:1;"></div>
-            </div>
-            <div onclick="App.promptEditTransport('${trip.id}')" style="padding:12px 16px 14px; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px 8px; cursor:pointer;">
-                <div>
-                    <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">艙等</div>
-                    <div style="font-size:13px; font-weight:600; color:#1a1a1a;">${f.cabin || '經濟艙'}</div>
-                </div>
-                <div>
-                    <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">座位</div>
-                    <div style="font-size:13px; font-weight:600; color:#1a1a1a; letter-spacing:0.04em;">${f.seat || '--'}</div>
-                </div>
-                <div>
-                    <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">登機門</div>
-                    <div style="font-size:${f.gate ? '13px' : '11px'}; font-weight:${f.gate ? '600' : '400'}; color:${f.gate ? '#1a1a1a' : '#B4B2A9'};">${f.gate || '當天公告'}</div>
-                </div>
-            </div>
-            ` : `
-            <div onclick="App.promptEditTransport('${trip.id}')" style="padding:24px 16px; text-align:center; cursor:pointer;">
-                <div style="font-size:11px; color:#D3D1C7; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;">今日無航班</div>
-            </div>
-            `}
-            ${peekBar}
         </div>`;
 },
 
 
+/** 🏨 衛星組件：下榻住宿 (V2026.ULTRA 寬軌對稱版) */
 renderHotelCard(container, trip, focusDay = 1) {
     if (!container) return;
+
     if (!trip || !trip.id) {
-        container.innerHTML = `<div style="padding:20px; font-size:10px; color:#B4B2A9; font-weight:600; text-transform:uppercase;">Data Syncing...</div>`;
+        container.innerHTML = `<div class="p-5 text-slate-300 text-[10px] font-black uppercase">Data Syncing...</div>`;
         return;
     }
 
@@ -1512,107 +1350,60 @@ renderHotelCard(container, trip, focusDay = 1) {
         const todaysHotels = hotels.filter(h => h.days && h.days.includes(focusDay));
         const h = todaysHotels.length > 0 ? todaysHotels[0] : null;
 
-        const allFlights = Array.isArray(trip.transport) ? trip.transport : [];
-        const f = allFlights.find(fl => Number(fl.day) === Number(focusDay));
-        const flightLabel = f
-            ? `${f.carrier || ''} ${f.code || ''} · ${f.depTime || '--'} → ${f.arrTime || '--'}`.trim()
-            : '今日航班';
-
-        const peekBar = `
-            <div onclick="(function(e){
-                    e.stopPropagation();
-                    viewEngine._switchSatelliteCard('${focusDay}', 'flight');
-                 })(event)"
-                 style="display:flex; align-items:center; justify-content:space-between;
-                        padding:0 16px; height:44px; cursor:pointer;
-                        background:#D4537E; font-size:12px; font-weight:600; color:#FBEAF0;">
-                <span><i class="fa-solid fa-plane-departure" style="font-size:13px; margin-right:6px;"></i>${flightLabel}</span>
-                <i class="fa-solid fa-chevron-up" style="font-size:12px; opacity:0.7;"></i>
-            </div>`;
-
         container.innerHTML = `
-            <div style="background:white; border-radius:14px; border:0.5px solid #E2E8F0; overflow:hidden;">
+            <div onclick="App.promptEditHotelByTripId('${trip.id}')" 
+                 class="relative bg-white p-5 rounded-[2.2rem] border border-slate-100 shadow-sm hover:shadow-md ring-1 ring-slate-100/50 cursor-pointer transition-all duration-500 active:scale-95 h-36 flex flex-col justify-between group overflow-hidden">
+                
+                <!-- 🚀 頂部標頭：與航班小卡 100% 視覺同步 -->
+                <div class="flex justify-between items-center mb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">下榻住宿</span>
+                        <span class="text-[9px] theme-text-pink font-black bg-pink-50 px-2 py-0.5 rounded-full italic uppercase shadow-sm">D${focusDay}</span>
+                    </div>
+                    <div class="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center group-hover:bg-pink-50 transition-colors duration-500">
+                        <span class="text-xs group-hover:rotate-12 transition-transform">🏨</span>
+                    </div>
+                </div>
+                
+                <!-- 🚀 核心數據區：執行全寬水平對焦 -->
+                <div class="relative z-10 w-full mb-1">
+                    ${h ? `
+                        <div class="flex flex-col gap-2">
+                            <!-- 飯店名稱：提升權重，支援兩行溢出 -->
+                            <h5 class="text-[15px] font-black text-slate-800 leading-tight pr-4 line-clamp-1">${h.name}</h5>
+                            
+                            <!-- 資訊導軌：地址與電話水平對焦，利用寬軌優勢完整顯示 -->
+                            <div class="flex items-center gap-4 border-t border-slate-50 pt-3">
+                                <div class="flex items-center gap-2 flex-1 min-w-0">
+                                    <span class="text-[12px] shrink-0">📍</span>
+                                    <p class="text-[11px] font-bold text-slate-500 leading-none truncate">${h.address || '未設定地址'}</p>
+                                </div>
+                                
+                                <div class="h-4 w-px bg-slate-100 shrink-0"></div>
 
-                <div onclick="(function(e){
-                        e.stopPropagation();
-                        const slot = document.getElementById('slot-hotel-${focusDay}');
-                        if (slot && slot.style.zIndex === '1') {
-                            viewEngine._switchSatelliteCard('${focusDay}', 'hotel');
-                        } else {
-                            App.promptEditHotelByTripId('${trip.id}');
-                        }
-                     })(event)"
-                     style="background:#185FA5; padding:10px 16px 11px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <i class="fa-solid fa-bed" style="font-size:17px; color:#E6F1FB;"></i>
-                        <div>
-                            <div style="font-size:13px; font-weight:600; color:#E6F1FB;">下榻住宿</div>
-                            <div style="font-size:12px; color:#85B7EB; letter-spacing:0.02em;">Accommodation</div>
+                                <div class="flex items-center gap-2 shrink-0 pr-2">
+                                    <span class="text-[12px] shrink-0">📞</span>
+                                    <p class="text-[11px] font-black text-slate-500 tabular-nums leading-none tracking-tighter">${h.phone || '--'}</p>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <span style="font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; background:#E6F1FB; color:#0C447C;">D${focusDay}</span>
+                    ` : `
+                        <div class="flex flex-col items-center py-2 justify-center opacity-30">
+                            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Hotel Sector Vacuum</p>
+                            <p class="text-[8px] font-bold text-slate-300 italic mt-0.5">點擊焊接住宿燃料</p>
+                        </div>
+                    `}
                 </div>
 
-                ${h ? `
-                <div onclick="App.promptEditHotelByTripId('${trip.id}')" style="padding:16px 16px 18px; cursor:pointer;">
-                    <div style="font-size:18px; font-weight:600; color:#1a1a1a; line-height:1.3; margin-bottom:12px;">${h.name}</div>
-                    <div style="display:flex; align-items:flex-start; gap:6px; margin-bottom:6px;">
-                        <i class="fa-solid fa-location-dot" style="font-size:13px; color:#378ADD; flex-shrink:0; margin-top:2px;"></i>
-                        <div style="flex:1; min-width:0;">
-                            <div id="addr-short-${focusDay}" style="font-size:12px; color:#5F5E5A; line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${h.address || '未設定地址'}</div>
-                            <div id="addr-full-${focusDay}" style="font-size:12px; color:#5F5E5A; line-height:1.5; display:none;">${h.address || '未設定地址'}</div>
-                            ${h.address && h.address.length > 20 ? `
-                            <span onclick="event.stopPropagation(); (function(){
-                                const s=document.getElementById('addr-short-${focusDay}');
-                                const f=document.getElementById('addr-full-${focusDay}');
-                                const b=document.getElementById('addr-btn-${focusDay}');
-                                const open=s.style.display==='none';
-                                s.style.display=open?'block':'none';
-                                f.style.display=open?'none':'block';
-                                b.textContent=open?'展開':'收合';
-                            })()"
-                            id="addr-btn-${focusDay}"
-                            style="font-size:11px; color:#185FA5; cursor:pointer;">展開</span>
-                            ` : ''}
-                        </div>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:6px;">
-                        <i class="fa-solid fa-phone" style="font-size:13px; color:#378ADD; flex-shrink:0;"></i>
-                        <span style="font-size:12px; color:#5F5E5A;">${h.phone || '--'}</span>
-                    </div>
-                </div>
-                <div style="display:flex; align-items:center; margin:0 -1px;">
-                    <div style="width:16px; height:16px; border-radius:50%; background:#F8FAFC; border:0.5px solid #185FA5; opacity:0.4; flex-shrink:0; z-index:1;"></div>
-                    <div style="flex:1; border-top:1.5px dashed #B5D4F4;"></div>
-                    <div style="width:16px; height:16px; border-radius:50%; background:#F8FAFC; border:0.5px solid #185FA5; opacity:0.4; flex-shrink:0; z-index:1;"></div>
-                </div>
-                <div onclick="App.promptEditHotelByTripId('${trip.id}')" style="padding:12px 16px 14px; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px 8px; cursor:pointer;">
-                    <div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">入住</div>
-                        <div style="font-size:12px; font-weight:600; color:#185FA5;">${h.checkIn || '--'}</div>
-                    </div>
-                    <div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">退房</div>
-                        <div style="font-size:12px; font-weight:600; color:#185FA5;">${h.checkOut || '--'}</div>
-                    </div>
-                    <div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">房型</div>
-                        <div style="font-size:13px; font-weight:600; color:#1a1a1a;">${h.roomType || '--'}</div>
-                    </div>
-                </div>
-                ` : `
-                <div onclick="App.promptEditHotelByTripId('${trip.id}')" style="padding:24px 16px; text-align:center; cursor:pointer;">
-                    <div style="font-size:11px; color:#D3D1C7; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;">今日無住宿資料</div>
-                </div>
-                `}
-                ${peekBar}
+                <!-- 背景裝飾：與航班卡一致的極簡浮水印 -->
+                <div class="absolute -right-2 -bottom-2 text-4xl opacity-[0.02] font-black italic select-none pointer-events-none uppercase">STAY</div>
             </div>`;
-
     } catch (err) {
-        console.error("❌ [ViewEngine] 旅館卡渲染失敗:", err);
-        container.innerHTML = `<div style="padding:20px; background:#FFF1F2; color:#E11D48; border-radius:12px; font-size:10px; font-weight:600;">數據導通異常</div>`;
+        console.error("❌ [ViewEngine-Collapse] 旅館卡渲染失敗:", err);
+        container.innerHTML = `<div class="p-5 bg-rose-50 text-rose-500 rounded-2xl text-[10px] font-black">數據導通異常</div>`;
     }
 },
+
 
 /** 🛫 編輯班機與核心參數 (V2026.ULTRA 數據軌道擴充版) */
 promptEditOverview(tripId) {
@@ -1926,21 +1717,24 @@ _renderDayOverview(schedules) {
                 <div class="flex-1 pb-10">
                     <details class="group/nested overflow-hidden transition-all duration-300">
                         <summary class="block cursor-pointer outline-none select-none [&::-webkit-details-marker]:hidden">
-                            <div class="bg-white p-3.5 rounded-[1.4rem] border border-slate-100 shadow-sm active:scale-[0.98] hover:border-pink-100 transition-all relative">
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-[11px] font-black tabular-nums bg-pink-50 px-2 py-0.5 rounded-full" style="color: ${themeColor}">
+                            <div class="bg-white p-6 rounded-[2.2rem] border border-slate-100 shadow-sm active:scale-[0.98] hover:border-pink-100 transition-all relative">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-[12px] font-black tabular-nums tracking-tighter" style="color: ${themeColor}">
                                         ${mainNode.time || '--:--'}
                                     </span>
                                     ${hasSubNodes ? `
-                                        <span class="text-[9px] font-black text-slate-400">${subNodes.length} 站 ▼</span>
+                                        <div class="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 rounded-full border border-slate-100">
+                                            <span class="text-[9px] font-black theme-text-pink">${subNodes.length} STEPS</span>
+                                            <i class="fa-solid fa-chevron-down text-[8px] text-slate-300 transition-transform group-open/nested:rotate-180"></i>
+                                        </div>
                                     ` : ''}
                                 </div>
-                                <h4 class="font-black text-slate-800 text-[13px] leading-snug mt-1">${mainNode.location}</h4>
+                                <h4 class="font-black text-slate-800 text-md leading-tight">${mainNode.location}</h4>
                             </div>
                         </summary>
 
                         <!-- 🚀 子路網渲染區：位移校準 (ml-2) 與 時間主題配色 (theme-text-pink) -->
-                        <div class="mt-3 border-t border-slate-50 animate-slide-down">
+                        <div class="pl-2 space-y-0 border-l-2 border-dashed border-slate-100 ml-2 mt-4 mb-2 animate-slide-down relative">
                             ${subNodes.map((sub, sIdx) => {
                                 // 💡 職人對焦：時間標籤導入主題配色
                                 const timeLabel = `<span class="text-[10px] font-black theme-text-pink tabular-nums w-10 text-right">${sub.time || '--:--'}</span>`;
@@ -1972,16 +1766,28 @@ if (fuelType === 'transport') {
         dotHtml = `<div class="w-2 h-2 rounded-full ${dotBg} z-10 shadow-[0_0_0_4px_white]"></div>`;
     }
 
-    const hasCost = Number(sub.segment_cost) > 0;
     return `
-        <div class="relative flex items-center gap-2 py-1.5 last:pb-0 border-b border-slate-50 last:border-none">
-            <span class="text-[10px] font-black theme-text-pink tabular-nums text-right w-8 shrink-0">${sub.time || '--:--'}</span>
-            <div class="w-5 flex justify-center shrink-0">${dotHtml}</div>
-            <span class="text-[12px] font-black ${isGoal ? 'text-slate-900' : 'text-slate-600'} flex-1 min-w-0 truncate">${stopName}</span>
-            <span class="text-[9px] font-black text-slate-300 italic w-6 text-center shrink-0">${sub.seg !== undefined ? `S${sub.seg}` : ''}</span>
-            <span class="text-[10px] font-black theme-text-pink tabular-nums w-12 text-right shrink-0">${hasCost ? '¥' + Number(sub.segment_cost).toLocaleString() : ''}</span>
-        </div>`;
+        <div class="relative flex items-center gap-4 py-4 last:pb-2">
+            <!-- 🕒 時間軸與物理節點對焦 -->
+            <div class="flex items-center justify-end gap-3 w-20 shrink-0">
+                <span class="text-[10px] font-black theme-text-pink tabular-nums text-right">${sub.time || '--:--'}</span>
+                <div class="w-5 flex justify-center">
+                    ${dotHtml}
+                </div>
+            </div>
 
+            <!-- 📄 站點資訊：已執行「附註資訊去噪」，僅保留名稱 -->
+            <div class="flex-1 min-w-0">
+                <h5 class="text-[13px] font-black ${isGoal ? 'text-slate-900' : 'text-slate-700'} truncate leading-tight">
+                    ${stopName}
+                </h5>
+            </div>
+
+            <!-- 🚀 段落標記 S0/S1... -->
+            ${sub.seg !== undefined ? `
+                <div class="px-1.5 py-0.5 bg-slate-50 border border-slate-100 rounded text-[8px] font-black text-slate-300 italic shrink-0">S${sub.seg}</div>
+            ` : ''}
+        </div>`;
 }else if (fuelType === 'shopping') {
                                     return `
                                         <div class="relative flex items-start gap-3 py-4 first:pt-2">
@@ -2000,16 +1806,16 @@ if (fuelType === 'transport') {
                                         </div>`;
                                 } else {
                                     // 標準巢狀行程 (Nested Matrix)
-                                    // 標準巢狀行程 (Nested Matrix)
                                     return `
-                                        <div class="border-b border-slate-50 last:border-none">
-                                            <div class="flex items-center gap-2 py-1.5">
-                                                <span class="text-[10px] font-black theme-text-pink tabular-nums text-right w-8 shrink-0">${sub.time || '--:--'}</span>
-                                                <div class="w-2 h-2 rounded-full bg-slate-200 shrink-0"></div>
-                                                <span class="text-[12px] font-bold text-slate-600 flex-1 min-w-0 leading-snug">${sub.task || sub.location || ''}</span>
-                                                ${sub.expense && sub.expense !== '0' ? `<span class="text-[10px] font-black theme-text-pink tabular-nums shrink-0">¥${Number(sub.expense).toLocaleString()}</span>` : ''}
+                                        <div class="relative flex items-start gap-3 py-3">
+                                            <div class="w-2 h-2 rounded-full bg-slate-200 mt-4 shrink-0 shadow-[0_0_0_4px_white]"></div>
+                                            <div class="flex-1 bg-slate-50/50 p-4 rounded-[1.5rem] border border-slate-100/50">
+                                                <div class="flex justify-between items-center mb-1">
+                                                    ${timeLabel}
+                                                    ${sub.expense && sub.expense !== '0' ? `<span class="text-[9px] font-black text-slate-400">¥${sub.expense}</span>` : ''}
+                                                </div>
+                                                <p class="text-[11px] font-bold text-slate-600 leading-relaxed">${sub.task || sub.location || ''}</p>
                                             </div>
-                                            ${sub.move ? `<div class="text-[10px] text-slate-400 italic pb-1.5" style="padding-left:52px;">↳ ${sub.move}</div>` : ''}
                                         </div>`;
                                 }
                             }).join('')}
@@ -2176,14 +1982,17 @@ _processNestedScheduleFuel(subNodes, mainNode) {
         </details>`;
 },
 
+/** 📍 景點/購物路網組件：顯示層 (V2026.ULTRA 全量對焦版) */
 renderScheduleItem(tripId, dayIndex, item, itemIndex) {
-    const engine = this;
+    const engine = this; 
     let detailContent = "";
-
+    
+    // 🚀 1. 物理 ID 焊接與風格預洗
     const nodeId = `tf-node-${dayIndex}-${itemIndex}`;
     const currentStyle = (item.style || 'default').toLowerCase().trim();
     const hasJsonFuel = item.memo && (item.memo.trim().startsWith('{') || item.memo.trim().startsWith('['));
 
+    // 🚀 2. 多態渲染發動機分流
     if (currentStyle === 'json') {
         detailContent = engine.renderItineraryFuel(item.memo);
     } else if (currentStyle === 'transport') {
@@ -2191,94 +2000,54 @@ renderScheduleItem(tripId, dayIndex, item, itemIndex) {
     } else if (currentStyle === 'image') {
         detailContent = `
             <div class="mt-3 space-y-3 animate-fade-in">
-                ${item.memo ? `<p style="font-size: 11px; font-weight: 500; color: #444441; padding: 0 4px; line-height: 1.7;">${item.memo}</p>` : ''}
-                ${item.imageUrl ? `<div style="border-radius: 14px; overflow: hidden; border: 0.5px solid #E2E8F0;"><img src="${item.imageUrl}" class="w-full max-h-80 object-cover"></div>` : ''}
+                ${item.memo ? `<p class="text-[11px] text-slate-500 font-medium px-1 leading-relaxed">${item.memo}</p>` : ''}
+                ${item.imageUrl ? `<div class="relative rounded-[1.8rem] overflow-hidden border border-slate-100 shadow-sm"><img src="${item.imageUrl}" class="w-full max-h-80 object-cover"></div>` : ''}
             </div>`;
-    } else if (currentStyle === 'shopping') {
+    } 
+    // 🚀 核心補強：購物軌道分流
+    else if (currentStyle === 'shopping') {
         detailContent = engine._renderShoppingFuelCards(item, dayIndex, itemIndex);
-    } else {
-        detailContent = hasJsonFuel
-            ? engine.renderItineraryFuel(item.memo)
-            : `<p style="font-size: 12px; font-weight: 500; color: #444441; line-height: 1.7; margin-top: 10px; padding: 0 4px;">${item.memo || '未填寫行程備註'}</p>`;
+    } 
+    else {
+        detailContent = hasJsonFuel ? engine.renderItineraryFuel(item.memo) : `<p class="text-xs text-slate-500 font-medium leading-relaxed mt-2.5 pl-1 pr-12">${item.memo || '未填寫行程備註'}</p>`;
     }
 
+    // 🚀 3. 物理結構渲染 (封裝購物標籤與標題)
     const isShopping = currentStyle === 'shopping';
 
     return `
-        <div id="${nodeId}" class="schedule-card group animate-fade-in mb-3 relative"
-             style="
-                 background: white;
-                 border-radius: 14px;
-                 padding: 16px;
-                 border: 0.5px solid #E2E8F0;
-                 transition: border-color 0.3s;
-                 overflow: hidden;
-             "
-             onmouseenter="this.style.borderColor='#D4537E'"
-             onmouseleave="this.style.borderColor='#E2E8F0'">
-
+        <div id="${nodeId}" class="schedule-card group bg-white rounded-[2.8rem] p-7 shadow-sm border border-slate-50 hover:border-[var(--theme-primary)] transition-all duration-300 animate-fade-in mb-6 relative overflow-hidden">
             <div class="flex justify-between items-start">
-                <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
-
-                    <!-- 標頭：時間 + SHOPPING badge + 標題 -->
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span style="
-                            font-size: 11px; font-weight: 800; font-style: italic;
-                            color: #D4537E; background: #FBEAF0;
-                            padding: 2px 10px; border-radius: 6px;
-                            white-space: nowrap; flex-shrink: 0;
-                            font-variant-numeric: tabular-nums;
-                        ">${item.time || '--:--'}</span>
-
-                        ${isShopping ? `
-                        <span style="
-                            font-size: 9px; font-weight: 800;
-                            background: #2C2C2A; color: white;
-                            padding: 2px 8px; border-radius: 4px;
-                            letter-spacing: 0.08em; flex-shrink: 0;
-                        ">SHOPPING</span>` : ''}
-
-                        <h4 style="
-                            font-size: 14px; font-weight: 700;
-                            color: #1a1a1a; line-height: 1.4;
-                            word-break: break-word; margin: 0;
-                        ">${item.location || item.task || (isShopping ? '購物清單' : '新節點')}</h4>
+                <div class="space-y-4 flex-1">
+                    <div class="flex items-center gap-3.5 min-h-[32px]">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-black theme-text-pink tabular-nums bg-pink-50 px-3 py-1.5 rounded-full italic shadow-sm flex-none">
+                                ${item.time || '--:--'}
+                            </span>
+                            ${isShopping ? `<span class="text-[9px] font-black bg-slate-800 text-white px-2 py-1 rounded-md uppercase tracking-widest">Shopping</span>` : ''}
+                        </div>
+                        
+                        <h4 class="text-base font-black text-slate-800 tracking-tight leading-tight">
+                            ${item.location || item.task || (isShopping ? '購物清單' : '新節點')}
+                        </h4>
                     </div>
-
-                    <!-- 內容區 -->
+                    
                     <div class="content-body w-full">
                         ${detailContent}
                     </div>
                 </div>
 
-                <!-- 操作按鈕（hover 顯示） -->
-                <div class="absolute top-4 right-4 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <button onclick="App.copyNodeJsonToClipboard('${tripId}', ${dayIndex}, ${itemIndex})"
-                            style="
-                                width: 32px; height: 32px;
-                                display: flex; align-items: center; justify-content: center;
-                                background: #EAF3DE; color: #3B6D11;
-                                border-radius: 10px; border: none; cursor: pointer;
-                                transition: all 0.2s;
-                            "
-                            onmouseenter="this.style.background='#639922';this.style.color='white'"
-                            onmouseleave="this.style.background='#EAF3DE';this.style.color='#3B6D11'"
+                <div class="absolute top-7 right-7 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button onclick="App.copyNodeJsonToClipboard('${tripId}', ${dayIndex}, ${itemIndex})" 
+                            class="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-500 hover:text-white transition-all active:scale-90"
                             title="複製燃料 JSON">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
                             <path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
                         </svg>
                     </button>
 
-                    <button onclick="App.promptEditSchedule('${tripId}', ${dayIndex}, ${itemIndex})"
-                            style="
-                                width: 32px; height: 32px;
-                                display: flex; align-items: center; justify-content: center;
-                                background: #F1EFE8; color: #888780;
-                                border-radius: 10px; border: none; cursor: pointer;
-                                transition: all 0.2s;
-                            "
-                            onmouseenter="this.style.background='#D4537E';this.style.color='white'"
-                            onmouseleave="this.style.background='#F1EFE8';this.style.color='#888780'">
+                    <button onclick="App.promptEditSchedule('${tripId}', ${dayIndex}, ${itemIndex})" 
+                            class="w-8 h-8 flex items-center justify-center bg-slate-50 text-slate-300 rounded-xl hover:theme-bg hover:text-white transition-all active:scale-90">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
                             <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                         </svg>
@@ -2287,7 +2056,6 @@ renderScheduleItem(tripId, dayIndex, item, itemIndex) {
             </div>
         </div>`;
 },
-
 
 // ============================================================
 // 💰 [Expense & Statistics] 開銷與統計視圖
@@ -2611,10 +2379,12 @@ _collectExpenseDetails(trip, categoryId) {
 },
 
 
+/** 🛒 [Shopping Module] 購物情報系統視圖 (佈局對焦修正版) */
 renderShopping(container, shoppingItems = [], activeCategory = '食') {
     const trip = state.trips.find(t => t.id === state.activeTripId);
     const categories = trip?.shoppingConfig?.categories || ['食', '藥妝', '一般'];
     
+    // 🚀 關鍵對焦 A：將 pb-40 下修為 pb-32，確保底欄按鈕高度一致
     container.innerHTML = `
         <div class="shopping-module animate-fade-in space-y-6 pb-32">
             
@@ -2665,29 +2435,17 @@ renderShopping(container, shoppingItems = [], activeCategory = '食') {
                         </button>
                     </div>
                 `).join('')}
-            </div>
+                </div>
 
             <div class="space-y-4">
                 <div class="flex justify-between items-center px-2">
+                    <div class="flex flex-col">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Browsing: ${activeCategory}</p>
+                    </div>
 
-                    <!-- 改動 1：BROWSING 標題中文化 + 加深顏色 -->
-                    <span style="
-                        font-size: 11px; font-weight: 700;
-                        color: #5F5E5A; letter-spacing: 0.06em;
-                        display: inline-flex; align-items: center; gap: 6px;
-                    ">
-                        <span style="
-                            display: inline-flex; align-items: center; justify-content: center;
-                            width: 16px; height: 16px; border-radius: 50%;
-                            background: #F1EFE8; color: #888780; font-size: 8px;
-                        "><i class="fa-solid fa-bag-shopping"></i></span>
-                        瀏覽中：${activeCategory}
-                    </span>
-
-                    <!-- 改動 2：轉移按鈕 emoji 改 FA -->
-                    <button onclick="expenseManager.promptTransferTarget()"
-                            class="flex items-center gap-1.5 px-4 py-2 bg-pink-50 theme-text-pink rounded-xl text-[10px] font-black active:scale-95 transition-all border border-pink-100">
-                        <i class="fa-solid fa-cart-arrow-down" style="font-size: 10px;"></i> 轉移至排程
+                    <button onclick="expenseManager.promptTransferTarget()" 
+                            class="flex items-center gap-1.5 px-4 py-2 bg-pink-50 theme-text-pink rounded-xl text-[10px] font-black uppercase tracking-tighter active:scale-95 transition-all border border-pink-100 shadow-sm">
+                        <span class="text-xs">🚚</span> 轉移至排程
                     </button>
                 </div>
 
@@ -2701,7 +2459,6 @@ renderShopping(container, shoppingItems = [], activeCategory = '食') {
     this.focusShoppingTab(activeCategory);
 },
 
-
     /** 🧬 物理對焦：分類標籤置中捲動 */
     focusShoppingTab(cat) {
         requestAnimationFrame(() => {
@@ -2712,156 +2469,79 @@ renderShopping(container, shoppingItems = [], activeCategory = '食') {
         });
     },
 
+/** 🧬 子組件：渲染購物卡片 (V2026.ULTRA - INFO 導通版) */
 _renderShoppingCards(items, category) {
     const filtered = items.filter(i => i.category === category);
-    if (filtered.length === 0) return `
-        <div style="
-            padding: 48px 0; text-align: center;
-            color: #B4B2A9; font-size: 11px; font-weight: 700;
-            border: 1.5px dashed #E2E8F0; border-radius: 14px;
-        ">尚無此分類商品</div>`;
+    if (filtered.length === 0) return `<div class="py-12 text-center text-slate-300 text-[10px] font-black italic border-2 border-dashed border-slate-50 rounded-[2rem]">NO CARGO DETECTED</div>`;
 
     return filtered.map((item) => {
         const mapQuery = encodeURIComponent(`${item.store || ''} ${item.name} Japan`);
         const mapUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
+        
         const hasImage = !!(item.image_query || item.imageUrl);
         const imgUrl = item.imageUrl || `https://www.google.com/search?q=${encodeURIComponent(item.image_query || item.name_jp || item.name)}&tbm=isch`;
 
         return `
-            <div style="
-                background: white;
-                border-radius: 14px;
-                border: 0.5px solid #E2E8F0;
-                padding: 16px;
-                transition: border-color 0.2s;
-            "
-            class="animate-fade-in group relative"
-            onmouseenter="this.style.borderColor='#F4C0D1'"
-            onmouseleave="this.style.borderColor='#E2E8F0'">
-
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-
-                    <!-- 左側：勾選 + 名稱 -->
-                    <div style="display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0;">
-
-                        <!-- 勾選按鈕 -->
-                        <div onclick="expenseManager.toggleShoppingDone('${item.id}')"
-                             style="
-                                 width: 20px; height: 20px; border-radius: 50%;
-                                 border: 2px solid ${item.done ? '#D4537E' : '#D3D1C7'};
-                                 background: ${item.done ? '#D4537E' : 'white'};
-                                 display: flex; align-items: center; justify-content: center;
-                                 flex-shrink: 0; cursor: pointer; margin-top: 2px;
-                                 transition: all 0.2s;
-                             ">
-                            ${item.done ? '<svg style="width:10px;height:10px;" fill="none" stroke="white" viewBox="0 0 24 24" stroke-width="4"><path d="M5 13l4 4L19 7"></path></svg>' : ''}
+            <div class="bg-white p-5 rounded-[1.8rem] border border-slate-50 shadow-sm hover:shadow-md transition-all group relative animate-fade-in">
+                <div class="flex justify-between items-start gap-3">
+                    <div class="flex items-start gap-3 flex-1 min-w-0">
+                        <div onclick="expenseManager.toggleShoppingDone('${item.id}')" 
+                             class="w-8 h-8 rounded-full border-2 border-slate-100 flex items-center justify-center group-hover:border-pink-200 transition-colors shrink-0 cursor-pointer active:scale-90 mt-0.5">
+                             <div class="w-4 h-4 rounded-full ${item.done ? 'theme-bg' : 'bg-transparent'} transition-all"></div>
                         </div>
 
-                        <div style="flex: 1; min-width: 0; overflow: hidden;">
-                            <!-- 商品名稱 -->
+                        <div class="overflow-hidden flex-1">
                             ${hasImage ? `
-                            <a href="${imgUrl}" target="_blank" style="text-decoration: none;">
-                                <span style="
-                                    font-size: 13px; font-weight: 700;
-                                    color: ${item.done ? '#B4B2A9' : '#1a1a1a'};
-                                    display: block; line-height: 1.4;
-                                    ${item.done ? 'text-decoration: line-through;' : ''}
-                                    word-break: break-word;
-                                ">${item.name}</span>
-                            </a>` : `
-                            <span style="
-                                font-size: 13px; font-weight: 700;
-                                color: ${item.done ? '#B4B2A9' : '#1a1a1a'};
-                                display: block; line-height: 1.4;
-                                ${item.done ? 'text-decoration: line-through;' : ''}
-                                word-break: break-word;
-                            ">${item.name}</span>`}
+                                <a href="${imgUrl}" target="_blank" 
+                                   class="font-black text-slate-800 text-[13px] truncate block hover:theme-text-pink transition-colors cursor-pointer group/link flex items-center gap-1">
+                                    <span class="${item.done ? 'text-slate-300 line-through' : ''}">${item.name}</span>
+                                    <span class="text-[9px] opacity-0 group-hover/link:opacity-100 transition-opacity">🖼️</span>
+                                </a>
+                            ` : `
+                                <h4 class="font-black text-slate-800 text-[13px] truncate ${item.done ? 'text-slate-300 line-through' : ''}">${item.name}</h4>
+                            `}
+                            
+                            <p class="text-[10px] theme-text-pink font-black mt-0.5 tabular-nums tracking-tighter truncate">
+                                ${item.name_jp || ''}
+                            </p>
+                            
+                            <div class="flex items-center gap-2 mt-1.5">
+                                <p class="text-[9px] text-slate-400 font-bold uppercase tracking-tighter tabular-nums">
+                                    JPY ${item.price?.toLocaleString()} × ${item.quantity || 1}
+                                </p>
+                            </div>
 
-                            <!-- 日文名 -->
-                            ${item.name_jp ? `
-                            <p style="
-                                font-size: 10px; font-weight: 600;
-                                color: #D4537E; margin-top: 2px;
-                                font-variant-numeric: tabular-nums;
-                                overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-                            ">${item.name_jp}</p>` : ''}
-
-                            <!-- 單價 × 數量 -->
-                            <p style="
-                                font-size: 10px; font-weight: 600;
-                                color: #888780; margin-top: 4px;
-                                font-variant-numeric: tabular-nums;
-                            ">JPY ${item.price?.toLocaleString()} × ${item.quantity || 1}</p>
-
-                            <!-- 商品說明 -->
                             ${item.info ? `
-                            <div style="
-                                margin-top: 10px;
-                                background: #FFFBEB;
-                                border-left: 3px solid #F59E0B;
-                                border-radius: 0 8px 8px 0;
-                                padding: 8px 10px 8px 32px;
-                                position: relative;
-                            ">
-                                <i class="fa-solid fa-circle-info" style="
-                                    position: absolute; left: 10px; top: 10px;
-                                    font-size: 11px; color: #D97706;
-                                "></i>
-                                <p style="
-                                    font-size: 12px; font-weight: 500;
-                                    color: #451A03; line-height: 1.7; margin: 0;
-                                    word-break: break-word;
-                                ">${item.info}</p>
-                            </div>` : ''}
+                            <div class="mt-3 bg-slate-50/50 rounded-xl p-2.5 border-l-2 border-pink-200/50">
+                                <p class="text-[10px] text-slate-500 font-medium leading-relaxed italic">
+                                    ${item.info}
+                                </p>
+                            </div>
+                            ` : ''}
                         </div>
                     </div>
 
-                    <!-- 右側：總價 + 刪除 -->
-                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0;">
-                        <span style="
-                            font-size: 14px; font-weight: 800;
-                            color: #D4537E; font-variant-numeric: tabular-nums;
-                        ">¥${((item.price || 0) * (item.quantity || 1)).toLocaleString()}</span>
-                        <button onclick="expenseManager.deleteShoppingItem('${item.id}')"
-                                style="
-                                    background: none; border: none; cursor: pointer;
-                                    color: #D3D1C7; padding: 4px;
-                                    transition: color 0.2s;
-                                "
-                                onmouseenter="this.style.color='#E24B4A'"
-                                onmouseleave="this.style.color='#D3D1C7'">
-                            <i class="fa-solid fa-trash" style="font-size: 11px;"></i>
-                        </button>
+                    <div class="flex flex-col items-end gap-1 shrink-0">
+                        <span class="text-[13px] font-black text-slate-800 tabular-nums">¥${((item.price || 0) * (item.quantity || 1)).toLocaleString()}</span>
+                        <button onclick="expenseManager.deleteShoppingItem('${item.id}')" class="text-slate-200 hover:text-rose-400 transition-colors p-1 text-[10px]">🗑️</button>
                     </div>
                 </div>
 
-                <!-- 底部：商店地圖連結 -->
-                <div style="
-                    margin-top: 12px; padding-top: 10px;
-                    border-top: 0.5px solid #E2E8F0;
-                ">
-                    <a href="${mapUrl}" target="_blank" style="
-                        display: flex; align-items: center; justify-content: space-between;
-                        text-decoration: none;
-                    ">
-                        <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
-                            <i class="fa-solid fa-location-dot" style="font-size: 11px; color: #D4537E; flex-shrink: 0;"></i>
-                            <span style="
-                                font-size: 11px; font-weight: 600; color: #5F5E5A;
-                                overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-                            ">${item.store || '未指定具體地點'}</span>
+                <div class="mt-4 pt-3 border-t border-slate-50">
+                    <a href="${mapUrl}" target="_blank" class="flex items-center justify-between group/map">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="text-[10px]">📍</span>
+                            <span class="text-[11px] font-bold text-slate-500 group-hover/map:theme-text-pink transition-colors truncate">
+                                ${item.store || '未指定具體地點'}
+                            </span>
                         </div>
-                        <span style="
-                            font-size: 9px; font-weight: 800;
-                            color: #D4537E; letter-spacing: 0.06em;
-                            flex-shrink: 0; margin-left: 8px;
-                        ">地圖 ›</span>
+                        <span class="text-[8px] font-black text-slate-300 uppercase tracking-widest italic shrink-0 ml-2">GO MAP ›</span>
                     </a>
                 </div>
-            </div>`;
+            </div>
+        `;
     }).join('');
 },
-
 
 // ============================================================
 // 🏮 [Translate Module] 翻譯情境系統視圖 */
@@ -3515,26 +3195,31 @@ renderAICopyBtn(prompt) {
 },
 
 
+/** 🎨 視覺演進：行程/購物複合燃料渲染器 (V2026.ULTRA 物理加固導通版) */
 renderItineraryFuel(jsonStr) {
-    if (!jsonStr || jsonStr.trim() === "") return `<div style="padding: 24px; color: #B4B2A9; font-style: italic; font-size: 12px;">等待燃料注入...</div>`;
+    if (!jsonStr || jsonStr.trim() === "") return `<div class="p-6 text-slate-400 italic text-xs">等待燃料注入...</div>`;
 
     try {
+        // 🚀 1. 數據物理洗滌：封鎖多行斷路、隱形字元，並強制修復「空欄位」語法錯誤
         const sanitized = jsonStr
             .replace(/```json/g, '')
             .replace(/```/g, '')
             .replace(/[\u200B-\u200D\uFEFF]/g, '')
-            .replace(/:\s*(?=[,}])/g, ': 1')
+            // ⚡ 核心熔斷補丁：捕捉冒號後直接接逗號或右括號的殘缺處 (如 "quantity":,)，強制補回 1 確保導通
+            .replace(/:\s*(?=[,}])/g, ': 1') 
             .trim();
-
+            
         const data = JSON.parse(sanitized);
         const rawItems = (data && data.stops && Array.isArray(data.stops)) ? data.stops : (Array.isArray(data) ? data : [data]);
 
         if (rawItems.length === 0) return "";
 
+        // 🚀 2. 模式對焦分流 (購物模式)
         if (rawItems.some(item => item && 'price' in item)) {
             return this._renderShoppingFuelPreview(rawItems);
         }
 
+        // 🚀 3. 標準行程軌道渲染 (執行標籤對位協定)
         let totalExpense = 0;
         const contentHtml = rawItems.map((item, idx) => {
             let displayExpense = "0";
@@ -3542,143 +3227,89 @@ renderItineraryFuel(jsonStr) {
                 const costStr = String(item.expense);
                 const prices = costStr.replace(/,/g, '').match(/\d+/g);
                 if (prices) totalExpense += (prices.map(Number).reduce((a, b) => a + b, 0) / prices.length);
-                displayExpense = costStr.replace(/[^\d]/g, '') || "0";
+                displayExpense = costStr.replace(/[^\d]/g, '') || "0"; 
             }
 
+            // 🚀 核心修正 A：數據洗滌軌道解耦 (預先處理備註，封殺模板字串內的語法衝突)
             let cleanNote = "";
             if (item.note) {
+                // 物理切除「MEMO:」等重複標籤，並進行數據除錯
                 cleanNote = String(item.note).replace(/^(MEMO|memo|備註)[:：]\s*/i, '').trim();
             }
 
-            const hasDetails = item.spotlight || cleanNote;
-
-            // 備註圖示與顏色
-            let noteIcon = 'fa-circle-info', noteIconColor = '#D97706';
-            let noteBg = '#FFFBEB', noteBorder = '#F59E0B', noteTextColor = '#451A03';
-            if (cleanNote && (cleanNote.includes('⚠️') || cleanNote.includes('注意'))) {
-                noteIcon = 'fa-triangle-exclamation'; noteIconColor = '#D97706';
-            } else if (cleanNote && (cleanNote.includes('📍') || cleanNote.includes('出口'))) {
-                noteIcon = 'fa-location-dot'; noteIconColor = '#3B82F6';
-                noteBg = '#EFF6FF'; noteBorder = '#93C5FD'; noteTextColor = '#1E3A5F';
-            }
-
             return `
-                <div class="itinerary-fuel-box animate-fade-in"
-                     style="${idx > 0 ? 'margin-top: 16px; padding-top: 16px; border-top: 1px dashed #E2E8F0;' : 'margin-top: 8px;'}"
-                     data-index="${idx}">
-
-                    <!-- 標頭：時間 + 標題 -->
-                    <div style="display: flex; align-items: flex-start; gap: 8px;">
-                        <span style="
-                            font-size: 11px; font-weight: 800; font-style: italic;
-                            color: #D4537E; background: #FBEAF0;
-                            padding: 2px 8px; border-radius: 6px;
-                            white-space: nowrap; flex-shrink: 0;
-                            font-variant-numeric: tabular-nums;
-                        " data-field="time" data-index="${idx}">${item.time || '--:--'}</span>
-
-                        <h4 style="
-                            font-size: 13px; font-weight: 700;
-                            color: #1a1a1a; line-height: 1.4;
-                            word-break: break-word; margin: 0;
-                        " data-field="task" data-index="${idx}">${item.task || item.location || '新節點'}</h4>
+                <div class="itinerary-fuel-box space-y-4 ${idx > 0 ? 'mt-8 pt-8 border-t border-dashed border-slate-100' : 'mt-3'} animate-fade-in" data-index="${idx}">
+                    <!-- 🚀 標頭區：時間(span) 與 標題(h4) -->
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-[10px] font-black theme-text-pink bg-pink-50 px-2 py-0.5 rounded-full italic shadow-sm" 
+                              data-field="time" data-index="${idx}">${item.time || '--:--'}</span>
+                        <h4 class="text-[11px] font-black text-slate-700 tracking-tight" 
+                            data-field="task" data-index="${idx}">${item.task || item.location || '新節點'}</h4>
                     </div>
 
-                    <!-- move 區塊 -->
-                    ${item.move ? `
-                    <div style="
-                        margin-top: 8px;
-                        border-left: 2px solid #E2E8F0;
-                        padding: 4px 0 4px 10px;
-                    " data-field="move" data-index="${idx}">
-                        <p style="
-                            font-size: 12px; font-weight: 500;
-                            color: #444441; line-height: 1.7; margin: 0;
-                        ">${item.move}</p>
-                    </div>` : ''}
-
-                    <!-- 費用標籤 -->
-                    ${Number(displayExpense) > 0 ? `
-                    <div style="margin-top: 8px; display: flex; align-items: baseline; gap: 3px;">
-                        <span style="font-size: 9px; font-weight: 700; color: #B4B2A9; letter-spacing: 0.04em;">費用</span>
-                        <span style="
-                            font-size: 13px; font-weight: 800;
-                            color: #D4537E; font-variant-numeric: tabular-nums;
-                        " data-field="expense" data-index="${idx}">¥${Number(displayExpense).toLocaleString()}</span>
-                    </div>` : ''}
-
-                    <!-- 詳細備註收折 -->
-                    ${hasDetails ? `
-                    <details style="margin-top: 8px;">
-                        <summary style="
-                            list-style: none; cursor: pointer; user-select: none;
-                            display: inline-flex; align-items: center; gap: 5px;
-                        ">
-                            <span style="
-                                display: inline-flex; align-items: center; justify-content: center;
-                                width: 16px; height: 16px; border-radius: 50%;
-                                background: #F1EFE8; color: #888780; font-size: 8px;
-                            "><i class="fa-solid fa-chevron-down"></i></span>
-                            <span style="
-                                font-size: 11px; font-weight: 700; color: #5F5E5A;
-                                letter-spacing: 0.04em;
-                            ">詳細備註</span>
-                        </summary>
-
-                        <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-                            ${item.spotlight ? `
-                            <div style="
-                                background: ${noteBg};
-                                border-left: 3px solid ${noteBorder};
-                                border-radius: 0 8px 8px 0;
-                                padding: 10px 12px 10px 36px;
-                                position: relative;
-                            ">
-                                <i class="fa-solid ${noteIcon}" style="
-                                    position: absolute; left: 12px; top: 12px;
-                                    font-size: 12px; color: ${noteIconColor};
-                                "></i>
-                                <p style="
-                                    font-size: 13px; font-weight: 500;
-                                    color: ${noteTextColor}; line-height: 1.7; margin: 0;
-                                    word-break: break-word;
-                                " data-field="spotlight" data-index="${idx}">${item.spotlight}</p>
-                            </div>` : ''}
-
-                            ${cleanNote ? `
-                            <p style="
-                                font-size: 12px; font-weight: 500; color: #444441;
-                                line-height: 1.7; padding: 0 4px; margin: 0;
-                                word-break: break-word;
-                            " data-field="note" data-index="${idx}">${cleanNote}</p>` : ''}
+                    <!-- 🚀 亮點區：對位 spotlight -->
+                    ${item.spotlight ? `
+                    <div class="bg-amber-50/70 border border-amber-100 rounded-[1.5rem] p-4 shadow-sm">
+                        <div class="flex items-start gap-2">
+                            <span class="text-xs text-amber-500">✨</span>
+                            <div class="min-w-0">
+                                <p class="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Spotlight</p>
+                                <p class="text-xs text-amber-900 font-medium leading-relaxed" 
+                                   data-field="spotlight" data-index="${idx}">${item.spotlight}</p>
+                            </div>
                         </div>
-                    </details>` : ''}
+                    </div>` : ''}
+
+                    <!-- 🚀 原子數據區：移動(move) 與 費用(expense) -->
+                    <div class="grid grid-cols-1 gap-2 mx-1">
+                        ${item.move ? `
+                        <div class="bg-slate-50/50 border border-slate-100/50 rounded-[1.25rem] p-3 flex items-start gap-3">
+                            <span class="text-[10px] mt-0.5">📍</span>
+                            <div>
+                                <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">移動方案</p>
+                                <p class="text-xs text-slate-600 font-bold leading-tight" 
+                                   data-field="move" data-index="${idx}">${item.move}</p>
+                            </div>
+                        </div>` : ''}
+                        
+                        <div class="bg-slate-50/50 border border-slate-100/50 rounded-[1.25rem] p-3 flex justify-between items-center px-4">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px]">💰</span>
+                                <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">預估開銷</p>
+                            </div>
+                            <p class="text-xs font-black theme-text-pink tabular-nums">
+                                ¥<span data-field="expense" data-index="${idx}">${displayExpense}</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- 🚀 核心修正 B：備註區 (洗滌後內容導入 + 深灰顯色加固) -->
+                    ${cleanNote ? `
+                    <div class="px-2 pt-1">
+                        <p class="text-[11px] font-bold text-slate-500 italic leading-relaxed tracking-wide" 
+                           data-field="note" data-index="${idx}">${cleanNote}</p>
+                    </div>` : ''}
                 </div>`;
         }).join('');
 
-        // 底部總計
+        // 🚀 4. 底部總計渲染
         const footerHtml = totalExpense > 0 ? `
-            <div style="
-                margin-top: 24px; padding-top: 16px;
-                border-top: 1.5px solid #E2E8F0;
-                display: flex; justify-content: flex-end; align-items: baseline; gap: 6px;
-            ">
-                <span style="font-size: 10px; font-weight: 700; color: #888780; letter-spacing: 0.04em;">預估小計</span>
-                <span style="font-size: 11px; font-weight: 800; color: #D4537E;">¥</span>
-                <span style="
-                    font-size: 20px; font-weight: 800; color: #D4537E;
-                    font-variant-numeric: tabular-nums;
-                ">${Math.round(totalExpense).toLocaleString()}</span>
+            <div class="mt-8 pt-5 border-t-2 border-slate-50 text-right pr-2">
+                <p class="text-[10px] font-black text-slate-300 uppercase tracking-tighter italic mb-1">Estimated Total</p>
+                <div class="inline-flex items-baseline gap-1">
+                    <span class="text-[10px] font-black theme-text-pink">¥</span>
+                    <span class="text-xl font-black theme-text-pink tracking-tight">${Math.round(totalExpense).toLocaleString()}</span>
+                </div>
             </div>` : '';
 
         return contentHtml + footerHtml;
 
     } catch (err) {
         console.error("❌ [Fuel-Render-Collapse]:", err);
-        return `<div style="padding: 16px; background: #FFF0F0; color: #E24B4A; border-radius: 12px; font-size: 12px; font-weight: 700;">資料解析異常，請重新嘗試</div>`;
+        // 遵循專業語境：數據路網對焦異常回饋
+        return `<div class="p-4 bg-rose-50 text-rose-500 rounded-2xl text-xs font-bold">數據路網對焦異常，請重新嘗試</div>`;
     }
 },
-
 
 /** 🛰️ 交通衛星組件：路網解析軌道 (V2026.ULTRA 物理隔離版) */
 renderTransportFuel(memo, nodeId = "tf-auto-gen") {
@@ -3703,38 +3334,16 @@ renderTransportFuel(memo, nodeId = "tf-auto-gen") {
     // 🚀 3. 模組化子任務調度
     const spotlightHtml = this._renderSpotlight(t.spotlight);
     const alertsHtml = this._renderTransportAlerts(t.alerts);
-    const hasHints = t.spotlight || (t.alerts && t.alerts.length > 0);
-
-    // 💡 Spotlight + Alerts 收合，預設不展開，減少卡片高度
-    const hintsCollapsible = hasHints ? `
-    <details class="w-full">
-        <summary class="flex items-center gap-2 px-1 py-2 cursor-pointer select-none list-none">
-            <span style="
-                display: inline-flex; align-items: center; justify-content: center;
-                width: 16px; height: 16px; border-radius: 50%;
-                background: #F1EFE8; color: #888780; font-size: 8px;
-                transition: transform 0.2s;
-            "><i class="fa-solid fa-chevron-right"></i></span>
-            <span style="
-                font-size: 11px; font-weight: 700;
-                color: #5F5E5A;
-                letter-spacing: 0.08em; text-transform: uppercase;
-            ">搭乘提示 · 注意事項</span>
-        </summary>
-        <div class="mt-2 space-y-3">
-            ${spotlightHtml}
-            ${alertsHtml}
-        </div>
-    </details>` : '';
-
+    
     // 💡 職人診斷：SectorSwitch 現在承載了所有的 Timeline 細節
     const sectorSwitchHtml = this._renderSectorSwitchModule(t, timetableUrl, nodeId);
     const verificationHtml = this._renderVerificationModule(t);
 
     // 🚀 4. 戰術階層噴發 (Tactical Hierarchy Layout)
     return `
-        <div class="mt-4 space-y-4 animate-fade-in transport-fuel-container flex flex-col w-full overflow-visible">
-            ${hintsCollapsible}
+        <div class="mt-4 space-y-6 animate-fade-in transport-fuel-container flex flex-col w-full overflow-visible">
+            ${spotlightHtml}
+            ${alertsHtml}
             
             ${sectorSwitchHtml}
             
@@ -3762,32 +3371,12 @@ _renderSectorSwitchModule(t, timetableUrl, nodeId) {
     const boardingHtml = this._renderSectorSwitch(t, nodeId);
     return `
         <div class="w-full px-1 overflow-visible">
-            <div class="flex justify-between items-center mb-3 px-1">
-                <span style="
-                    font-size: 11px; font-weight: 700;
-                    color: #5F5E5A;
-                    letter-spacing: 0.08em; text-transform: uppercase;
-                    display: inline-flex; align-items: center; gap: 6px;
-                ">
-                    <span style="
-                        display: inline-flex; align-items: center; justify-content: center;
-                        width: 16px; height: 16px; border-radius: 50%;
-                        background: #F1EFE8; color: #888780; font-size: 8px;
-                    "><i class="fa-solid fa-train"></i></span>
-                    交通路段
-                </span>
-
+            <div class="flex justify-between items-end mb-3 px-1">
+                <p class="text-[10px] font-black text-slate-400 uppercase italic tracking-[0.2em] leading-none">📍 Sector Switch</p>
                 ${timetableUrl ? `
                     <a href="${timetableUrl}" target="_blank" rel="noopener noreferrer"
-                       style="
-                           font-size: 11px; font-weight: 700;
-                           color: #993556;
-                           border-bottom: 1.5px solid #F4C0D1;
-                           padding-bottom: 2px;
-                           display: inline-flex; align-items: center; gap: 4px;
-                           text-decoration: none;
-                       ">
-                        <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 9px;"></i>官網時刻表
+                       class="text-[9px] theme-text-pink font-black border-b-2 border-pink-100 pb-0.5 active:scale-95 transition-all leading-none">
+                       🔗 官網時刻表
                     </a>` : ''}
             </div>
             <div class="flex flex-col w-full gap-2.5">
@@ -3819,16 +3408,30 @@ _renderVerificationModule(t) {
     const count = t.verifications.length;
     const gridCols = count === 3 ? 'grid-cols-3' : (count === 2 ? 'grid-cols-2' : 'grid-cols-1');
 
-return `
-        <div class="mt-3 px-1 animate-fade-in">
-            <div class="flex flex-wrap gap-2">
+    return `
+        <div class="mt-5 px-1 animate-fade-in">
+            <div class="flex items-center gap-2 mb-3 px-1">
+                <div class="h-px flex-1 bg-slate-100"></div>
+                <p class="text-[9px] font-black text-slate-300 uppercase italic tracking-[0.3em] leading-none shrink-0">Real-time Logic Check</p>
+                <div class="h-px flex-1 bg-slate-100"></div>
+            </div>
+
+            <div class="grid ${gridCols} gap-2.5 w-full">
                 ${t.verifications.map(v => `
-                    <a href="${v.url}" target="_blank" rel="noopener noreferrer"
-                       class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-pink-50 border border-pink-100 rounded-lg text-[11px] font-black theme-text-pink active:scale-95 transition-all">
-                       <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                       ${v.label}
+                    <a href="${v.url}" target="_blank" 
+                       class="group/verif flex flex-col items-center justify-center py-3.5 bg-white border border-slate-100 rounded-[1.5rem] shadow-sm active:scale-95 transition-all hover:border-pink-200 hover:bg-pink-50/30">
+                       <span class="text-base mb-1 group-hover/verif:animate-bounce transition-transform">🗺️</span>
+                       <span class="text-[9px] font-black theme-text-pink uppercase tracking-tighter">${v.label}</span>
                     </a>
                 `).join('')}
+            </div>
+            
+            <div class="mt-3 flex items-center justify-center gap-1.5 opacity-50 px-2">
+                <span class="w-1 h-1 rounded-full bg-slate-400"></span>
+                <p class="text-[8px] text-slate-400 font-bold italic tracking-tight">
+                    PHYSICAL SYNC: 請點擊圖標比對 Google Maps 實境路網與轉乘月台
+                </p>
+                <span class="w-1 h-1 rounded-full bg-slate-400"></span>
             </div>
         </div>`;
 },
@@ -3919,12 +3522,14 @@ _renderTransportAlerts(alerts) {
 /** 🧬 私有子組件：一體化路網展開器 (V2026.ULTRA 標題解封版) */
 _renderSectorSwitch(t, nodeId) {
     const safeFuel = encodeURIComponent(JSON.stringify(t));
-
+    
+    // 🚀 1. 物理洗滌引擎：封殺 [VISIT_STOP] 等開發冗餘
     const sanitizeTitle = (str) => {
         if (!str) return "";
         return str.replace(/\[VISIT.*?\]/gi, '').replace(/\[.*?\]/g, '').trim();
     };
 
+    // 🚀 2. 多態 Icon 引擎 (維持職人辨識度)
     const getTransportIcon = (text, type) => {
         const str = text.toLowerCase();
         if (str.includes('步行') || str.includes('走路') || type === 'walk') return '🏃';
@@ -3939,76 +3544,46 @@ _renderSectorSwitch(t, nodeId) {
 
     return (t.boarding || []).map((b, idx) => {
         const rawSegment = typeof b === 'object' ? b.segment : b;
-        const segment = sanitizeTitle(rawSegment);
+        const segment = sanitizeTitle(rawSegment); // 執行物理洗滌
+        
         const type = (typeof b === 'object' && b.type) ? b.type : (segment.includes('巴士') ? 'bus' : 'rail');
         const icon = getTransportIcon(segment, type);
-        const cost = (typeof b === 'object' && b.cost) ? b.cost : null;
         const sectorDetailHtml = this.renderTimelineSegment(t.stops, idx);
-        const isActive = idx === 0;
+        const isActive = idx === 0; 
 
         return `
-            <div onclick="App.switchTransportSeg(${idx}, this, '${nodeId}')"
+            <div onclick="App.switchTransportSeg(${idx}, this, '${nodeId}')" 
                  data-memo="${safeFuel}"
-                 class="seg-btn block w-full mb-4 group animate-fade-in transition-all duration-500 overflow-visible">
-
-                <div style="
-                    background: white;
-                    border-radius: 14px;
-                    border: ${isActive ? '1.5px solid #D4537E' : '0.5px solid #E2E8F0'};
-                    overflow: hidden;
-                    transition: all 0.3s;
-                ">
-                    <!-- Header -->
-                    <div style="
-                        display: flex; align-items: center; gap: 8px;
-                        padding: 10px 14px 9px;
-                        background: ${isActive ? '#FFF5F8' : '#FAFAFA'};
-                        border-bottom: 0.5px solid #E2E8F0;
-                    ">
-                        <!-- Seg ID -->
-                        <span style="
-                            font-size: 10px; font-weight: 700;
-                            letter-spacing: 0.05em; color: #888780;
-                        ">S0${idx + 1}</span>
-
-                        <!-- 模式徽章 -->
-                        <span style="
-                            font-size: 11px; font-weight: 600;
-                            letter-spacing: 0.03em;
-                            color: ${isActive ? '#993556' : '#5F5E5A'};
-                            background: ${isActive ? '#FBEAF0' : '#F1EFE8'};
-                            border-radius: 5px; padding: 2px 7px;
-                        ">${icon} ${type.toUpperCase()}</span>
-
-                        <!-- 路線名稱 -->
-                        <span style="
-                            flex: 1; font-size: 13px; font-weight: 600;
-                            color: #1a1a1a;
-                            white-space: normal; word-break: break-word; line-height: 1.4;
-                        ">${segment}</span>
-
-                        <!-- 費用 -->
-                        ${cost ? `
-                        <span style="
-                            font-size: 12px; font-weight: 700;
-                            color: #5F5E5A; white-space: nowrap;
-                        ">¥${Number(cost).toLocaleString()}</span>
-                        ` : ''}
-
-                        <!-- Active 指示點 -->
-                        <div style="
-                            width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-                            background: ${isActive ? '#D4537E' : '#E2E8F0'};
-                            ${isActive ? 'box-shadow: 0 0 6px rgba(212,83,126,0.5);' : ''}
-                        "></div>
+                 class="seg-btn block w-full mb-6 group animate-fade-in transition-all duration-500 overflow-visible">
+                
+                <div class="p-6 bg-white rounded-[2.5rem] border-2 shadow-sm transition-all duration-500 relative
+                            ${isActive ? 'border-[var(--theme-primary)] ring-4 ring-[var(--theme-shadow)]' : 'border-slate-50 opacity-95'}">
+                    
+                    <div class="absolute top-8 right-8">
+                        <div class="w-3 h-3 rounded-full transition-all duration-500 
+                            ${isActive ? 'bg-[var(--theme-primary)] shadow-[0_0_12px_var(--theme-primary)] animate-pulse' : 'bg-slate-200'}"></div>
                     </div>
 
-                    <!-- Timeline body -->
-                    <div style="padding: 4px 0 2px;">
-                        ${sectorDetailHtml || `
-                        <p style="font-size: 11px; color: #B4B2A9; font-style: italic; padding: 10px 14px;">
-                            No detail records for this sector.
-                        </p>`}
+                    <div class="flex flex-col gap-4 mb-6 pb-5 border-b border-slate-50">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl shrink-0 group-hover:scale-110 transition-transform">
+                                ${icon}
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">Sector 0${idx + 1}</span>
+                                <span class="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 uppercase tracking-tighter w-fit mt-0.5 border border-slate-200">
+                                    ${type}
+                                </span>
+                            </div>
+                        </div>
+
+                        <h4 class="text-[18px] font-black text-slate-800 leading-[1.4] break-words pr-8">
+                            ${segment}
+                        </h4>
+                    </div>
+
+                    <div class="sector-internal-content px-1">
+                        ${sectorDetailHtml || `<p class="text-[10px] text-slate-300 italic py-2">No detail records for this sector.</p>`}
                     </div>
                 </div>
             </div>`;
@@ -4016,39 +3591,55 @@ _renderSectorSwitch(t, nodeId) {
 },
 
 
+
 /** 🧬 私有子組件：全路網細節折疊區 (V2026.ULTRA 純粹去噪版) */
 _renderFullRouteDetails(stops) {
     if (!stops || stops.length === 0) return "";
 
-return `
-        <details class="group w-full bg-slate-50/50 rounded-[1.4rem] border border-slate-100 overflow-hidden transition-all">
-            <summary class="flex justify-between items-center px-4 py-3 cursor-pointer list-none select-none hover:bg-slate-50 transition-colors">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm">🧭</span>
-                    <span class="text-[11px] font-black text-slate-500">完整路線</span>
-                    <span class="text-[10px] text-slate-400">${stops.length} 站</span>
+    return `
+        <details class="group w-full bg-slate-50/50 rounded-[2.2rem] border border-slate-100 overflow-hidden transition-all shadow-sm">
+            <summary class="flex justify-between items-center p-6 cursor-pointer list-none select-none hover:bg-slate-50 transition-colors">
+                <div class="flex items-center gap-4">
+                    <div class="w-9 h-9 rounded-2xl bg-white flex items-center justify-center shadow-sm border border-slate-100">
+                        <span class="text-base">🧭</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[12px] font-black text-slate-600 uppercase tracking-widest">全路網數據索引</span>
+                        <p class="text-[9px] font-black text-slate-400 opacity-60 uppercase tracking-tighter">Roadmap Index (${stops.length} Nodes)</p>
+                    </div>
                 </div>
-                <span class="text-[10px] text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+                <span class="text-[10px] text-slate-400 group-open:rotate-180 transition-transform px-2">▼</span>
             </summary>
 
-            <div class="px-4 pb-3 w-full box-border">
+            <div class="px-6 pb-8 relative bg-white/40 w-full box-border">
+                <div class="absolute left-[65px] top-6 bottom-12 w-[1.5px] bg-slate-100/80 z-0"></div>
+
                 ${stops.map((stop, idx) => {
                     const isTransfer = ['xfer', 'arr'].includes(String(stop.type).toLowerCase());
                     const isStart = idx === 0;
+                    
                     return `
-                    <div class="flex items-center gap-0 py-1.5 ${idx > 0 ? 'border-t border-slate-50' : ''}">
-                        <span class="text-[11px] font-black theme-text-pink tabular-nums w-12 flex-shrink-0 text-right">
-                            ${stop.time || '--:--'}
-                        </span>
-                        <div class="w-2 h-2 rounded-full mx-2 flex-shrink-0 border-2 border-white
-                            ${isTransfer || isStart ? 'bg-[var(--theme-primary)]' : 'bg-slate-300'}">
+                    <div class="flex items-center gap-5 relative z-10 w-full py-5">
+                        <div class="flex items-center justify-end gap-3 w-[75px] shrink-0">
+                            <span class="text-[11px] font-black theme-text-pink tabular-nums tracking-tighter">
+                                ${stop.time || '--:--'}
+                            </span>
+                            <div class="w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm transition-all
+                                ${isTransfer || isStart ? 'bg-[var(--theme-primary)] scale-110 shadow-pink-100' : 'bg-slate-300'}">
+                            </div>
                         </div>
-                        <span class="text-[12px] font-bold text-slate-600 flex-1 min-w-0 truncate">
-                            ${stop.name}
-                        </span>
-                        <span class="text-[9px] text-slate-300 flex-shrink-0 ml-1">S${stop.seg}</span>
-                    </div>`;
-                }).join('')}
+
+                        <div class="flex-1 min-w-0 flex items-center gap-2">
+                            <h5 class="text-[15px] font-bold text-slate-700 leading-tight break-words">
+                                ${stop.name}
+                            </h5>
+                            <span class="text-[8px] font-black text-slate-300 bg-slate-50 px-2 py-0.5 rounded italic shrink-0 border border-slate-100/50">
+                                S${stop.seg}
+                            </span>
+                        </div>
+                    </div>
+                    ${idx < stops.length - 1 ? '<div class="h-px bg-slate-50 ml-[75px] mr-2"></div>' : ''}
+                `;}).join('')}
             </div>
         </details>`;
 },
@@ -4073,12 +3664,28 @@ _renderTransportFooter(t) {
 
     const displayTotal = Math.round(totalValue).toLocaleString();
 
-return `
-        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-50 animate-fade-in">
-            <span class="text-[10px] font-black text-slate-400 uppercase tracking-wide">預估總車資</span>
-            <span class="text-[10px] font-black theme-text-pink opacity-60">¥</span>
-            <span class="text-[20px] font-black theme-text-pink leading-none tabular-nums tracking-tight">${displayTotal}</span>
-        </div>`;
+    return `
+        <div class="mt-8 flex flex-col items-end w-full animate-fade-in pr-2">
+            <div class="flex flex-col items-end">
+                <span class="text-[9px] font-black text-slate-400 uppercase italic tracking-widest mb-1 opacity-70">
+                    Est. Route Total
+                </span>
+                <div class="flex items-baseline gap-1">
+                    <span class="text-[16px] font-black theme-text-pink opacity-60">¥</span>
+                    <p class="text-[36px] font-black theme-text-pink leading-none tabular-nums tracking-tighter">
+                        ${displayTotal}
+                    </p>
+                </div>
+            </div>
+            
+            <div class="mt-4 flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100/50">
+                <span class="text-[8px] animate-pulse">ℹ️</span>
+                <p class="text-[8px] text-slate-400 font-black uppercase tracking-tighter">
+                    實境提示：此數值為各段 segment_cost 之物理彙整
+                </p>
+            </div>
+        </div>
+    `;
 },
 
 /** 🧬 私有子組件：錯誤回退 */
@@ -4091,272 +3698,163 @@ _renderTransportError(memo) {
 },
 
 
+/** 🧬 局部渲染引擎：詳細交通路線 (V2026.ULTRA 費用導通版) */
 renderTimelineSegment(allStops, targetSegIndex) {
     if (!allStops || !Array.isArray(allStops) || allStops.length === 0) return "";
+
     const filtered = allStops.filter(s => Number(s.seg) === Number(targetSegIndex));
     if (filtered.length === 0) return "";
+
     const sanitize = (str) => (str || "").replace(/\[VISIT.*?\]/gi, '').replace(/\[.*?\]/g, '').trim();
 
     return filtered.map((stop, idx) => {
         const name = sanitize(stop.name);
+        
+        // 🚀 核心焊接：提領 segment_cost 數據指紋與物理屬性
         const { time = "", type, note = "", seg, segment_cost } = stop;
         const costValue = Number(segment_cost || 0);
         const hasCost = costValue > 0;
-        const isLast = idx === filtered.length - 1;
-
-        // 圓點顏色：出發粉紅、抵達藍色、中間站灰色
-        const dotColor  = idx === 0 ? '#D4537E' : isLast ? '#185FA5' : '#B4B2A9';
-        const timeColor = idx === 0 ? '#D4537E' : isLast ? '#185FA5' : '#5F5E5A';
-
-        // 備註樣式（原邏輯保留）
-        let noteStyle = "background:#F8FAFC; border-color:#E2E8F0; color:#374151;";
+        
+        let noteStyle = "bg-slate-50/60 border-slate-200 text-slate-700";
         if (note.includes('⚠️')) {
-            noteStyle = "background:#FFFBEB; border-color:#FCD34D; color:#451A03;";
+            noteStyle = "bg-amber-50 border-amber-200 text-amber-950 ring-1 ring-amber-100";
         } else if (note.includes('📍') || note.includes('出口') || note.includes('🚀')) {
-            noteStyle = "background:#EFF6FF; border-color:#BFDBFE; color:#1E3A5F;";
+            noteStyle = "bg-blue-50 border-blue-200 text-blue-950 ring-1 ring-blue-100";
         }
 
-        const noteHtml = note ? `
-            <details style="margin-top: 6px; width: 100%;">
-                <summary style="
-                    font-size: 11px; color: #5F5E5A; font-weight: 600;
-                    cursor: pointer; list-none;
-                    display: flex; align-items: center; gap: 4px;
-                ">
-                    <i class="fa-solid fa-chevron-right" style="font-size: 9px; transition: transform 0.2s;"></i>
-                    詳細說明
-                </summary>
-                <div style="
-                    ${noteStyle}
-                    padding: 10px 12px;
-                    border-radius: 10px;
-                    border: 1px solid;
-                    margin-top: 6px;
-                    width: 100%; box-sizing: border-box;
-                ">
-                    <p style="font-size: 13px; font-weight: 600; line-height: 1.7; word-break: break-word;">
-                        ${note}
-                    </p>
-                </div>
-            </details>` : '';
-
         return `
-            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px 0;"
-                 class="animate-fade-in">
-
-                <!-- 時間軸：圓點 + 豎線 -->
-                <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex-shrink: 0;">
-                    <div style="
-                        width: 10px; height: 10px; border-radius: 50%;
-                        border: 2px solid ${dotColor};
-                        background: white;
-                        margin-top: 5px; flex-shrink: 0;
-                    "></div>
-                    ${!isLast ? `
-                    <div style="
-                        width: 1.5px;
-                        background: #E2E8F0;
-                        flex: 1; min-height: 24px; margin-top: 3px;
-                    "></div>` : ''}
-                </div>
-
-                <!-- 內容區 -->
-                <div style="flex: 1; padding-bottom: ${isLast ? '12px' : '16px'};">
-
-                    <!-- 時間 + 費用 -->
-                    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 2px;">
-                        <span style="
-                            font-size: 15px; font-weight: 800;
-                            color: ${timeColor};
-                            letter-spacing: 0.01em; font-variant-numeric: tabular-nums;
-                        ">${time}</span>
-
-                        ${hasCost ? `
-                        <div style="display: flex; align-items: baseline; gap: 3px;">
-                            <span style="font-size: 9px; font-weight: 700; color: #B4B2A9; letter-spacing: 0.04em;">EST.</span>
-                            <span style="font-size: 12px; font-weight: 800; color: ${timeColor}; font-variant-numeric: tabular-nums;">
-                                ¥${costValue.toLocaleString()}
+            <div class="flex flex-col gap-3 ${idx > 0 ? 'mt-10 pt-8 border-t border-slate-50' : 'mt-2'} animate-fade-in w-full overflow-visible">
+                
+                <div class="flex flex-col px-1">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="flex items-center gap-3">
+                            <span class="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded italic tracking-tighter">
+                                S${seg}
                             </span>
-                        </div>` : ''}
+                            ${type === 'xfer' ? `<span class="text-[7px] bg-slate-800 text-white px-2 py-0.5 rounded font-black uppercase tracking-widest shrink-0">TRANSFER</span>` : ''}
+                        </div>
+                        
+                        <!-- 🚀 費用渲染軌道 (詳細行程對焦版) -->
+                        ${hasCost ? `
+                            <div class="flex items-center gap-1 opacity-90">
+                                <span class="text-[9px] font-black text-slate-300 uppercase tracking-tighter">Est.</span>
+                                <span class="text-[11px] font-black theme-text-pink tabular-nums">¥${costValue.toLocaleString()}</span>
+                            </div>
+                        ` : ''}
                     </div>
 
-                    <!-- 站名 + TRANSFER badge -->
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <span style="
-                            font-size: 15px; font-weight: 700;
-                            color: #1a1a1a; line-height: 1.4; word-break: break-word;
-                        ">${name}</span>
-
-                        ${type === 'xfer' ? `
-                        <span style="
-                            font-size: 9px; font-weight: 800;
-                            background: #2C2C2A; color: white;
-                            padding: 1px 6px; border-radius: 4px;
-                            letter-spacing: 0.08em; flex-shrink: 0;
-                        ">TRANSFER</span>` : ''}
+                    <div class="flex items-baseline gap-4 w-full">
+                        <div class="shrink-0 min-w-[55px]">
+                            <p class="text-[16px] font-black theme-text-pink tabular-nums italic tracking-tighter">
+                                ${time}
+                            </p>
+                        </div>
+                        
+                        <h4 class="text-[18px] font-black tracking-tight text-slate-900 leading-[1.4] flex-1 break-words">
+                            ${name}
+                        </h4>
                     </div>
-
-                    <!-- Seg badge（原邏輯保留） -->
-                    <div style="margin-top: 4px;">
-                        <span style="
-                            font-size: 9px; font-weight: 800; font-style: italic;
-                            color: #888780; background: #F1EFE8;
-                            padding: 1px 6px; border-radius: 4px;
-                            letter-spacing: 0.03em;
-                        ">S${seg}</span>
-                    </div>
-
-                    ${noteHtml}
                 </div>
+                
+                ${note ? `
+                    <div class="${noteStyle} p-5 rounded-[1.8rem] border-2 transition-all duration-300 w-full box-border shadow-sm">
+                        <p class="text-[14px] font-bold leading-[1.7] break-words antialiased select-text">
+                            ${note}
+                        </p>
+                    </div>
+                ` : ''}
+                
             </div>`;
     }).join('');
 },
 
 
+/** 🛍️ [Fuel Sub-Engine] 購物燃料渲染器 (V2026.ULTRA 主題配色版) */
 _renderShoppingFuelCards(item, dayIndex, itemIndex) {
     let products = [];
-    const tripId = state.activeTripId;
-
+    const tripId = state.activeTripId; 
+    
     try {
         products = JSON.parse(item.memo || "[]");
-    } catch (e) {
-        return `<p style="font-size: 10px; color: #E24B4A; font-style: italic; padding: 16px 8px;">⚠️ 數據燃料損毀</p>`;
+    } catch (e) { 
+        return `<p class="text-[10px] text-rose-400 italic px-2 py-4">⚠️ 數據燃料損毀</p>`; 
     }
 
     const nodeTotal = products.reduce((sum, p) => sum + (Number(p.price) || 0) * (Number(p.quantity) || 1), 0);
 
     return `
-        <div class="mt-3 animate-fade-in">
-            <!-- 標頭：購物清單 + 總計 -->
-            <div style="
-                display: flex; justify-content: space-between; align-items: center;
-                padding-bottom: 10px; margin-bottom: 4px;
-                border-bottom: 0.5px solid #E2E8F0;
-            ">
-                <span style="font-size: 11px; font-weight: 700; color: #5F5E5A; letter-spacing: 0.04em;">購物清單</span>
-                <div style="display: flex; align-items: baseline; gap: 3px;">
-                    <span style="font-size: 10px; font-weight: 700; color: #B4B2A9;">¥</span>
-                    <span style="font-size: 16px; font-weight: 800; color: #D4537E; font-variant-numeric: tabular-nums; line-height: 1;">${nodeTotal.toLocaleString()}</span>
+        <div class="mt-4 space-y-4 animate-fade-in">
+            <div class="flex justify-between items-end px-2 mb-2 border-b border-slate-100/80 pb-2.5">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest italic font-mono">Inventory Ledger</p>
+                <div class="text-right">
+                    <p class="text-[16px] font-black theme-text-pink tabular-nums">¥${nodeTotal.toLocaleString()}</p>
                 </div>
             </div>
 
-            <div>
+            <div class="space-y-5">
                 ${products.map((p, pIdx) => {
                     const isChecked = p.checked === true;
                     const searchAnchor = encodeURIComponent(`${p.store} ${p.name} ${item.location || ''} Japan`);
+                    // 修正拼接符號，確保導通
                     const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${searchAnchor}`;
                     const imgSearchQuery = encodeURIComponent(p.image_query || `${p.store} ${p.name}`);
                     const googleImageUrl = `https://www.google.com/search?tbm=isch&q=${imgSearchQuery}`;
-
+                    
                     return `
-                    <div style="
-                        padding: 14px 0;
-                        ${pIdx > 0 ? 'border-top: 0.5px solid #E2E8F0;' : ''}
-                        transition: opacity 0.3s;
-                        opacity: ${isChecked ? '0.4' : '1'};
-                    ">
-                        <!-- 第一行：勾選 + 名稱 + 價格數量 -->
-                        <div style="display: flex; align-items: flex-start; gap: 10px;">
-                            <div onclick="App.toggleShoppingCheck('${tripId}', ${dayIndex}, ${itemIndex}, ${pIdx})"
-                                 style="
-                                     width: 18px; height: 18px; flex-shrink: 0;
-                                     border-radius: 5px; cursor: pointer;
-                                     display: flex; align-items: center; justify-content: center;
-                                     margin-top: 2px; transition: all 0.2s;
-                                     ${isChecked
-                                         ? 'background: #D4537E; border: 2px solid #D4537E;'
-                                         : 'background: white; border: 2px solid #D3D1C7;'}
-                                 ">
-                                ${isChecked ? '<svg style="width:10px;height:10px;color:white;" fill="none" stroke="white" viewBox="0 0 24 24" stroke-width="4"><path d="M5 13l4 4L19 7"></path></svg>' : ''}
+                    <div class="flex flex-col gap-3.5 p-5 ${isChecked ? 'bg-slate-50/40' : 'bg-slate-50/80'} rounded-[2.2rem] border ${isChecked ? 'border-slate-100' : 'border-slate-200/60'} transition-all duration-500 shadow-sm relative overflow-hidden">
+                        
+                        <div class="flex items-start gap-4">
+                            <div onclick="App.toggleShoppingCheck('${tripId}', ${dayIndex}, ${itemIndex}, ${pIdx})" 
+                                 class="mt-1 w-6 h-6 shrink-0 rounded-xl border-2 flex items-center justify-center transition-all cursor-pointer ${isChecked ? 'theme-bg border-transparent shadow-lg shadow-pink-100 scale-95' : 'border-slate-300 bg-white hover:border-pink-300'}">
+                                ${isChecked ? '<svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="4"><path d="M5 13l4 4L19 7"></path></svg>' : ''}
                             </div>
 
-                            <div style="flex: 1; min-width: 0;">
-                                <a href="${googleImageUrl}" target="_blank" style="text-decoration: none;">
-                                    <span style="
-                                        font-size: 13px; font-weight: 700;
-                                        color: #1a1a1a; display: block;
-                                        line-height: 1.4; word-break: break-all;
-                                        ${isChecked ? 'text-decoration: line-through; color: #B4B2A9;' : ''}
-                                    ">${p.name}</span>
+                            <div class="flex-1 min-w-0">
+                                <a href="${googleImageUrl}" target="_blank" class="block group/title">
+                                    <h5 class="text-[14px] font-black text-slate-700 leading-tight ${isChecked ? 'line-through opacity-30 italic' : 'group-hover/title:theme-text-pink'} transition-colors truncate">
+                                        ${p.name}
+                                    </h5>
+                                    <p class="text-[10px] text-slate-400 font-bold mt-0.5 truncate ${isChecked ? 'opacity-20' : ''}">${p.name_jp || ''}</p>
                                 </a>
-                                ${p.name_jp ? `
-                                <div style="font-size: 10px; color: #888780; margin-top: 3px; line-height: 1.4; word-break: break-all;">
-                                    ${p.name_jp}
-                                </div>` : ''}
                             </div>
 
-                            <div style="flex-shrink: 0; text-align: right; padding-left: 8px;">
-                                <span style="
-                                    font-size: 13px; font-weight: 800;
-                                    color: #D4537E; display: block;
-                                    font-variant-numeric: tabular-nums;
-                                ">¥${(Number(p.price) || 0).toLocaleString()}</span>
-                                <span style="font-size: 10px; color: #888780; display: block; margin-top: 2px;">
-                                    × ${p.quantity || 1}${isChecked ? ' · 已購入' : ''}
-                                </span>
+                            <div class="text-right shrink-0">
+                                <p class="text-[13px] font-black text-slate-600 tabular-nums ${isChecked ? 'opacity-30' : ''}">¥${(Number(p.price) || 0).toLocaleString()}</p>
+                                <p class="text-[9px] font-black text-slate-300 uppercase tracking-tighter">QTY ${p.quantity || 1}</p>
                             </div>
                         </div>
 
-                        <!-- 第二行：商店導航 -->
-                        ${!isChecked && p.store ? `
-                        <div style="margin-top: 8px; margin-left: 28px;">
-                            <a href="${googleMapsUrl}" target="_blank"
-                               style="
-                                   display: inline-flex; align-items: center; gap: 6px;
-                                   font-size: 11px; font-weight: 600;
-                                   color: #D4537E; background: #FBEAF0;
-                                   border: 0.5px solid #F4C0D1;
-                                   padding: 4px 10px; border-radius: 6px;
-                                   text-decoration: none; max-width: 100%; overflow: hidden;
-                                   transition: all 0.2s;
-                               ">
-                                <i class="fa-solid fa-location-dot" style="font-size: 10px; flex-shrink: 0;"></i>
-                                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.store}</span>
-                            </a>
-                        </div>` : ''}
-
-                        <!-- 第三行：購買提示 -->
-                        ${!isChecked && p.info ? `
-                        <details style="margin-top: 6px; margin-left: 28px;">
-                            <summary style="
-                                list-style: none; cursor: pointer; user-select: none;
-                                display: inline-flex; align-items: center; gap: 5px;
-                            ">
-                                <span style="
-                                    display: inline-flex; align-items: center; justify-content: center;
-                                    width: 16px; height: 16px; border-radius: 50%;
-                                    background: #F1EFE8; color: #888780; font-size: 8px;
-                                "><i class="fa-solid fa-chevron-down"></i></span>
-                                <span style="
-                                    font-size: 11px; font-weight: 700; color: #5F5E5A;
-                                    letter-spacing: 0.04em;
-                                ">購買提示</span>
-                            </summary>
-                            <div style="
-                                margin-top: 8px;
-                                background: #FFFBEB;
-                                border-left: 3px solid #F59E0B;
-                                border-radius: 0 8px 8px 0;
-                                padding: 10px 12px 10px 36px;
-                                position: relative;
-                            ">
-                                <i class="fa-solid fa-circle-info" style="
-                                    position: absolute; left: 12px; top: 12px;
-                                    font-size: 12px; color: #D97706;
-                                "></i>
-                                <p style="
-                                    font-size: 13px; font-weight: 500;
-                                    color: #451A03; line-height: 1.7; margin: 0;
-                                    word-break: break-word;
-                                ">${p.info}</p>
+                        ${p.info ? `
+                        <div class="ml-10">
+                            <div class="bg-white/90 rounded-2xl p-3.5 border border-slate-100/80 relative overflow-hidden shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
+                                <div class="absolute left-0 top-0 w-1 h-full theme-bg opacity-40"></div>
+                                <p class="text-[11px] leading-relaxed text-slate-500 font-medium italic break-words">
+                                    ${p.info}
+                                </p>
                             </div>
-                        </details>` : ''}
+                        </div>
+                        ` : ''}
 
-                    </div>`;
-                }).join('')}
+                        <div class="ml-10 flex flex-wrap gap-2">
+                            <a href="${googleMapsUrl}" target="_blank" 
+                               class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200/80 rounded-xl shadow-sm hover:border-pink-200 hover:bg-pink-50/30 transition-all active:scale-95 group/map max-w-full">
+                                
+                                <svg class="w-4 h-4 shrink-0 transition-colors ${isChecked ? 'text-slate-300 opacity-50' : 'theme-text-pink'}" 
+                                     fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-12-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                                </svg>
+                                
+                                <span class="text-[11px] font-black text-slate-600 group-hover/map:theme-text-pink truncate">
+                                    ${p.store || '定位商店'}
+                                </span>
+                            </a>
+                        </div>
+                    </div>
+                    `}).join('')}
             </div>
         </div>`;
 },
+
 
 // ============================================================
 // Backlog 相關渲染引擎

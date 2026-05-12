@@ -141,67 +141,63 @@ loadLiveHistory(cat) {
 // 2. [Router & Navigation] 視圖導播中樞
 // 負責：頁面切換、底欄渲染、導航對焦
 // ============================================================
-
 /** 🚀 視圖導播中心 V5.5 (V2026.ULTRA 特訓模式導通版) */
 navigateTo(view, tripId = null, extra = null) {
-    // 1. 狀態固化
     state.currentView = view;
     if (tripId) state.activeTripId = tripId;
-
     const contentContainer = document.getElementById('content-container');
     const dockContainer = document.getElementById('nav-dock-container');
-
-    // 2. 列表頁物理斷路
     if (view === 'list') {
         if (dockContainer) dockContainer.innerHTML = '';
         viewEngine.renderTripList(contentContainer, state.trips);
         this.updateNavTitle("TravelFlow");
         return;
     }
-
-    // 3. 燃料提取與安全性攔截
     const activeTrip = state.trips.find(t => t.id === state.activeTripId);
-    
-    // 🚀 關鍵焊接：將 'training' 加入全域視圖名單，封殺因為沒選 Trip 而被強制踢回 list 的邏輯
     const isGlobalView = ['settings', 'backlog', 'training'].includes(view);
     
     if (!activeTrip && !isGlobalView) {
         console.warn(`⚠️ [Router] 節點 ${view} 燃料缺失且非全域視圖，強制回位至 list`);
         return this.navigateTo('list');
     }
-
-    // 4. 🚀 渲染底欄 (Dock) 
     if (dockContainer) {
-        // 💡 職人修正：即便在 Global View (如特訓/靈感)，若有 activeTrip 仍應渲染 Dock 以便快速切換
         if (activeTrip) {
             viewEngine.renderBottomDock(dockContainer, view);
         } else {
-            // 特殊場景：若沒選行程但進入全域視圖，可選擇是否渲染簡版 Dock 或清空
-            dockContainer.innerHTML = ''; 
+            dockContainer.innerHTML = '';
         }
     }
-
-    // 🚀 5. 模組標題映射 (補齊「特訓模式」)
     const titleMap = {
-        'detail': '行程詳情',
-        'expense': '費用開銷',
-        'checklist': '攜帶清單',
-        'realtime': '即時翻譯',
-        'training': '記憶特訓',   // 🔥 新增：遺忘曲線特訓路徑
-        'contextual': '情境翻譯',
-        'shopping': '購物情報',
-        'emergency': '緊急救援',
-        'backlog': '備選靈感', 
-        'backup': '資料備份',
-        'settings': '系統設定'  
+        'detail':      '行程詳情',
+        'expense':     '費用開銷',
+        'checklist':   '攜帶清單',
+        'realtime':    '即時翻譯',
+        'training':    '記憶特訓',
+        'contextual':  '情境翻譯',
+        'shopping':    '購物情報',
+        'emergency':   '緊急救援',
+        'backlog':     '備選靈感',
+        'backup':      '資料備份',
+        'settings':    '系統設定'
     };
     this.updateNavTitle(titleMap[view] || "TravelFlow");
-
-    // 🚀 6. 物理分流導播
     window.scrollTo({ top: 0, behavior: 'smooth' });
     this.executeViewLogic(view, contentContainer, activeTrip, extra);
-},
 
+    // 🚀 切換至特訓頁時靜默同步，確保最新單字已進入影子資料庫
+    if (view === 'training') {
+        setTimeout(() => {
+            this.syncSRSShadow({ silent: true });
+        }, 300);
+    }
+
+    // 🚀 [新增] 切換至靈感清單時重置 FAB 狀態
+    if (view === 'backlog') {
+        setTimeout(() => {
+            if (viewEngine.updateRefineryFAB) viewEngine.updateRefineryFAB();
+        }, 300);
+    }
+},
 
 /** 🧬 視圖執行發動機 (V2026.ULTRA 備選精煉廠全量焊接版) */
 async executeViewLogic(view, container, trip, extra = null) {
@@ -1546,44 +1542,48 @@ _syncShoppingEngine(sectors, item) {
 
 /** 🚄 專屬發動機：交通路網指令對焦 (V2026.ULTRA 實戰細節強化版) */
 _syncTransportEngine(sectors, item) {
-    // 🚀 核心焊接：加入【實境空間感】與【戰術避坑】協定
     const TRANSPORT_PROMPT = `【STRICT_JSON_ONLY】
 請根據座標約束，生成高品質交通數據（繁體中文），禁前言。
 
-【戰術細節強化協定】
-1. 🚀 空間對焦：[note] 必須包含「實境空間指引」（如：月台編號、幾號出口、手扶梯方位）。
-2. 🚀 避坑預判：針對長距離轉乘，必須提供「⚠️ 戰術提醒」或「📍 物理對位」（如：排隊人潮、步行分鐘、始發站建議）。
-3. 🚀 數據去噪：[stops] 僅限起點、終點、中繼景點、樞紐大站。封殺其餘小站。
-4. 🚀 車資核實：每段 [segment_cost] 必須精確（包含特急/指定席料金）。
+【細節強化協定】
+1. [note] 必須包含實境空間指引（月台編號、幾號出口、手扶梯方位）。
+2. 長距離轉乘必須提供「⚠️ 注意」或「📍 位置指引」（排隊人潮、步行分鐘、始發站建議）。
+3. [stops] 僅限起點、終點、中繼景點、樞紐大站，封殺其餘小站。
+4. [segment_cost] 每段必須精確（含特急/指定席料金），純數字。
+5. [timetable] 請提供 Google Maps 點對點路線連結（transit 模式），格式如下：
+   https://www.google.com/maps/dir/起點名稱/終點名稱/?travelmode=transit
+   多段路線提供第一段主要區間即可。
 
 {
   "operator": "業者/主要車種",
   "cost": 0,
-  "hubStation": "樞紐大站名稱",
-  "spotlight": "✨ 核心戰法：總結最佳轉乘策略與避坑要點",
-  "alerts": ["營運異動/票券限制/季節擁擠警告"],
+  "hubStation": "樞紐大站名稱（無則省略此欄）",
+  "spotlight": "✨ 最佳轉乘策略與避坑建議（2-3句）",
+  "alerts": ["票券限制/季節擁擠/注意事項"],
   "boarding": [
-    { "type": "rail/bus", "segment": "路徑段落描述" }
+    { "type": "rail", "segment": "路徑段落描述（如：京都站→烏丸御池 地下鐵烏丸線）" }
   ],
   "stops": [
-    { 
-      "name": "站名", 
-      "time": "HH:mm", 
-      "type": "dep/xfer/arr", 
-      "seg": 0, 
-      "segment_cost": 0, 
-      "note": "⚠️ 避坑：描述空間動線與實戰注意" 
+    {
+      "name": "站名",
+      "time": "HH:mm",
+      "type": "dep",
+      "seg": 0,
+      "segment_cost": 0,
+      "note": "📍 位置指引或 ⚠️ 注意事項（必填，禁純動作描述）"
     }
-  ]
+  ],
+  "timetable": "https://www.google.com/maps/dir/起點/終點/?travelmode=transit"
 }
 
-【物理約束】
-- VISIT_STOP 必須執行「抵達 (arr)」與「再出發 (dep)」邏輯。
-- [note] 欄位嚴禁純動作描述，必須具備「空間資訊」或「風險警告」。
-- 系統將自動對位 Google Maps 實境校準，不需時刻表 URL。`;
+【約束】
+- [type] 只能是 dep / xfer / arr 三種。
+- VISIT_STOP（景點站）必須有抵達(arr)與再出發(dep)兩筆。
+- [note] 必須含空間資訊或風險警告，禁止純動作描述。
+- 禁止輸出官方時刻表 URL，統一使用 Google Maps 路線連結。`;
 
-    sectors.memoLabel.textContent = "數據燃料核心 (STRICT TRANSPORT JSON)";
-    sectors.memoInput.placeholder = "請貼上具備【實境戰術細節】的高品質交通 JSON...";
+    sectors.memoLabel.textContent = "交通燃料 (TRANSPORT JSON)";
+    sectors.memoInput.placeholder = "請貼上交通 JSON...";
     sectors.memoInput.style.height = '380px';
     
     this._applyAiStyling(sectors, TRANSPORT_PROMPT);
@@ -2097,7 +2097,7 @@ autoTagTransportSeg(stops, boardingCount) {
     });
 },
 
-/** 🛍️ [Shopping Fuel] 購物指令發射器 (V2026.ULTRA 真值算法 V2 版) */
+/** 🛍️ [Shopping Fuel] 購物指令發射器 (V2026.ULTRA V2.2) */
 copyShoppingPromptToClipboard() {
     const city = document.getElementById('shop-city')?.value || '日本城市';
     const item = document.getElementById('shop-item')?.value || '必買商品';
@@ -2105,33 +2105,37 @@ copyShoppingPromptToClipboard() {
     const now = new Date();
     const currentYearMonth = `${now.getFullYear()} 年 ${now.getMonth() + 1} 月`;
 
-    const prompt = `你是一位日籍專業採購與數據工程師，專精於「繁體中文 (Taiwan Style)」在地化建議。請針對「${city}」的「${item}」執行以下【真值採購演算法】。
+    const prompt = `你是日籍專業採購顧問，專精台灣繁體中文在地化建議。請針對「${city}」的「${item}」執行採購分析。
 
-🚨 第一階段：規格枚舉 (Spec Enumeration)
-- 必須主動檢索該品牌在 2026 年當下所有的型號分支。
-- 針對「電壓」執行硬性過濾：僅保留標註 AC100V-240V 或 Multi-Voltage 的型號。
-- ⚠️ 關鍵指令：若該產品存在多種國際電壓規格（如：旗艦款與輕便款），你「必須」確保輸出結果中同時包含這兩者。嚴禁漏掉單價較高或規格較強的旗艦款。
+🚨 第一階段：規格枚舉
+- 檢索該品牌 ${currentYearMonth} 當下所有型號。
+- 電壓硬性過濾：只保留 AC100V-240V 或 Multi-Voltage 的型號。
+- 若有多種電壓規格（旗艦款/輕便款），必須同時列出兩者，嚴禁漏掉旗艦款。
 
-🚨 第二階段：物理斷路與價格校準 (Safety & Price Ground Truth)
-- 嚴禁誘導：禁止建議「搭配變壓器」或「去現場詢問」。
-- 嚴禁通靈：若某型號僅支援 100V，該型號絕對禁止出現在 JSON 中。
-- 💰 價格絕對真值校準：必須對位 ${currentYearMonth} 官方最新含稅定價。
-- 💡 邏輯防禦：你必須檢索「官方直營店 (Official Store)」或「大型百貨公司專櫃」的實時價格作為基準。嚴禁使用電商折扣、二手價格或舊款清倉價，封殺過期數據汙染。
+🚨 第二階段：價格校準
+- 禁止建議「搭配變壓器」或「去現場詢問」。
+- 100V 單電壓型號禁止出現在結果中。
+- 價格必須對位 ${currentYearMonth} 官方含稅定價（官方直營店或大型百貨專櫃）。
+- 禁止使用電商折扣、二手或清倉價。
 
-🚨 第三階段：在地化語義純化 (Taiwan Localization)
-- [info] 欄位禁止使用工程術語（數據、對焦、導通、模組、歸一化）。
-- 使用台灣口語慣用語（如：位置好找、這款不用變壓器、台灣插頭直接插）。
+🚨 第三階段：台灣在地化
+- [info] 使用台灣口語（如：位置好找、台灣插頭直接插、不用另買變壓器）。
+- 禁止使用工程術語。
 
-🚨 輸出欄位規範：
-請以【純淨燃料包】JSON 格式輸出 5-8 個實體節點：
-- name: 中文品名 (需強調規格，如：旗艦版 BX W / 輕巧版 Smart W)
-- name_jp: 日文原名 (含精確型號識別)
-- price: 數字 (必須反映 ${currentYearMonth} 官方最新定價，確保精確對應型號等級)
-- store: 官方店名 (分店級精確度)
-- quantity: 1
-- tags: ["購", "#實體驗證"]
-- info: [台灣口語化理由] + [物理安全性保證：明確標示該型號帶回台灣直接插電不會燒掉]
-- image_query: "[品牌] [日文原名] 商品写真"`;
+【輸出格式】輸出 5-8 個節點的純 JSON 陣列：
+[
+  {
+    "name": "中文品名（含規格，如：旗艦版 / 輕巧版）",
+    "name_jp": "日文原名（含精確型號）",
+    "price": 12800,
+    "store": "官方店名（分店級）",
+    "quantity": 1,
+    "info": "台灣口語化說明＋電壓安全保證（如：台灣插頭直接插不用變壓器）",
+    "image_query": "品牌 日文型號 商品写真"
+  }
+]
+
+禁止前言與結語，直接輸出 JSON。`;
 
     navigator.clipboard.writeText(prompt).then(() => {
         uiManager.showToast(`✨ 「${city} - ${item}」真值算法 V2 已複製`);
@@ -3178,11 +3182,9 @@ promptEditTransport(tripId) {
 },
 
 
-/** 🏗️ 燃料組件：生成雙向起降輸入列 (V2026.ULTRA 航司欄位補完版) */
 generateFlightRowHTML(trip, index, data = null) {
     return `
         <div class="flight-row p-6 bg-slate-50 rounded-[2.5rem] space-y-4 border-2 border-transparent hover:border-pink-100 transition-all shadow-sm group" data-index="${index}">
-            <!-- 標頭：航段編號與顯示天數 -->
             <div class="flex justify-between items-center mb-1">
                 <div class="flex items-center gap-2">
                     <span class="text-[10px] font-black theme-text-pink bg-pink-50 px-3 py-1 rounded-full italic">航段 ${index + 1}</span>
@@ -3196,45 +3198,59 @@ generateFlightRowHTML(trip, index, data = null) {
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
-            
-            <!-- 🚀 核心新增：航空公司與班號輸入區 (頂層對位) -->
+
+            <!-- 航空公司 + 班號 -->
             <div class="grid grid-cols-2 gap-3 mb-2 animate-fade-in">
                 <div class="space-y-1.5">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 flex items-center gap-1">
-                        航空公司
-                    </label>
-                    <input type="text" class="flight-dep-carrier w-full bg-white rounded-xl p-3 text-[11px] font-black text-slate-700 border-none outline-none shadow-sm ring-1 ring-slate-100 focus:ring-pink-100 transition-all" 
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">航空公司</label>
+                    <input type="text" class="flight-dep-carrier w-full bg-white rounded-xl p-3 text-[11px] font-black text-slate-700 border-none outline-none shadow-sm ring-1 ring-slate-100 focus:ring-pink-100 transition-all"
                            placeholder="例如：長榮航空" value="${data?.carrier || ''}">
                 </div>
                 <div class="space-y-1.5">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 flex items-center gap-1">
-                        班機號碼
-                    </label>
-                    <input type="text" class="flight-dep-code w-full bg-white rounded-xl p-3 text-[11px] font-black text-slate-700 border-none outline-none shadow-sm ring-1 ring-slate-100 focus:ring-pink-100 transition-all" 
-                           placeholder="例如：BR111" value="${data?.code || ''}">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">班機號碼</label>
+                    <input type="text" class="flight-dep-code w-full bg-white rounded-xl p-3 text-[11px] font-black text-slate-700 border-none outline-none shadow-sm ring-1 ring-slate-100 focus:ring-pink-100 transition-all"
+                           placeholder="例如：BR178" value="${data?.code || ''}">
                 </div>
             </div>
 
-            <!-- 機場與時間配置區 -->
+            <!-- 起飛 + 降落 -->
             <div class="grid grid-cols-2 gap-3 pt-4 border-t border-slate-200/50">
                 <div class="space-y-2 text-left">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-tighter px-1 flex items-center gap-1">🛫 起飛機場</label>
-                    <input type="text" class="flight-dep-port w-full bg-white rounded-2xl p-3 text-xs font-bold border-none outline-none shadow-inner ring-1 ring-slate-50 focus:ring-pink-100" 
-                           placeholder="機場 (如：TPE)" value="${data?.depPort || ''}">
-                    <input type="time" class="flight-dep-time w-full bg-white rounded-xl p-2.5 text-[11px] font-black text-slate-600 border-none outline-none mt-1 shadow-sm ring-1 ring-slate-50" 
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-tighter px-1">🛫 起飛機場</label>
+                    <input type="text" class="flight-dep-port w-full bg-white rounded-2xl p-3 text-xs font-bold border-none outline-none shadow-inner ring-1 ring-slate-50 focus:ring-pink-100"
+                           placeholder="如：桃園國際機場" value="${data?.depPort || ''}">
+                    <input type="time" class="flight-dep-time w-full bg-white rounded-xl p-2.5 text-[11px] font-black text-slate-600 border-none outline-none mt-1 shadow-sm ring-1 ring-slate-50"
                            value="${data?.depTime || ''}">
                 </div>
                 <div class="space-y-2 text-left">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-tighter px-1 flex items-center gap-1">🛬 降落機場</label>
-                    <input type="text" class="flight-arr-port w-full bg-white rounded-2xl p-3 text-xs font-bold border-none outline-none shadow-inner ring-1 ring-slate-50 focus:ring-pink-100" 
-                           placeholder="機場 (如：KIX)" value="${data?.arrPort || ''}">
-                    <input type="time" class="flight-arr-time w-full bg-white rounded-xl p-2.5 text-[11px] font-black text-slate-600 border-none outline-none mt-1 shadow-sm ring-1 ring-slate-50" 
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-tighter px-1">🛬 降落機場</label>
+                    <input type="text" class="flight-arr-port w-full bg-white rounded-2xl p-3 text-xs font-bold border-none outline-none shadow-inner ring-1 ring-slate-50 focus:ring-pink-100"
+                           placeholder="如：關西國際機場" value="${data?.arrPort || ''}">
+                    <input type="time" class="flight-arr-time w-full bg-white rounded-xl p-2.5 text-[11px] font-black text-slate-600 border-none outline-none mt-1 shadow-sm ring-1 ring-slate-50"
                            value="${data?.arrTime || ''}">
+                </div>
+            </div>
+
+            <!-- 航廈 + 座位 + 登機門 -->
+            <div class="grid grid-cols-3 gap-3 pt-4 border-t border-slate-200/50">
+                <div class="space-y-1.5">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">出發航廈</label>
+                    <input type="text" class="flight-dep-terminal w-full bg-white rounded-xl p-3 text-[11px] font-black text-slate-700 border-none outline-none shadow-sm ring-1 ring-slate-100 focus:ring-pink-100 transition-all"
+                           placeholder="如：第二航廈" value="${data?.depTerminal || ''}">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">座位</label>
+                    <input type="text" class="flight-seat w-full bg-white rounded-xl p-3 text-[11px] font-black text-slate-700 border-none outline-none shadow-sm ring-1 ring-slate-100 focus:ring-pink-100 transition-all"
+                           placeholder="如：24A" value="${data?.seat || ''}">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">登機門</label>
+                    <input type="text" class="flight-gate w-full bg-white rounded-xl p-3 text-[11px] font-black text-slate-700 border-none outline-none shadow-sm ring-1 ring-slate-100 focus:ring-pink-100 transition-all"
+                           placeholder="當天公告" value="${data?.gate || ''}">
                 </div>
             </div>
         </div>`;
 },
-
 
 
 /** 🚀 動態導通：新增一組航班配置列 (組件對焦版) */
@@ -3281,61 +3297,53 @@ addFlightRow(tripId) {
 
 
 
-/** 💾 數據固化：採集雙向航班路徑 (V2026.ULTRA 航司指紋加固版) */
 async saveMultiTransportData(tripId) {
     const tripIndex = state.trips.findIndex(t => t.id === tripId);
     if (tripIndex === -1) return;
 
-    // 1. 抓取所有動態生成的航班列
     const rows = document.querySelectorAll('.flight-row');
     const updatedTransport = [];
 
-    // 🚀 2. 數據對焦採集：補齊航空公司與班號指針
     rows.forEach(row => {
-        // 🚀 核心焊接：擷取新版動態 Input ID
-        const depCarrier = row.querySelector('.flight-dep-carrier')?.value.trim() || "";
-        const depCode = row.querySelector('.flight-dep-code')?.value.trim() || "";
-        const depPort = row.querySelector('.flight-dep-port')?.value.trim() || "";
-        const depTime = row.querySelector('.flight-dep-time')?.value || "";
+        const depCarrier    = row.querySelector('.flight-dep-carrier')?.value.trim() || "";
+        const depCode       = row.querySelector('.flight-dep-code')?.value.trim() || "";
+        const depPort       = row.querySelector('.flight-dep-port')?.value.trim() || "";
+        const depTime       = row.querySelector('.flight-dep-time')?.value || "";
+        const arrPort       = row.querySelector('.flight-arr-port')?.value.trim() || "";
+        const arrTime       = row.querySelector('.flight-arr-time')?.value || "";
+        const depTerminal   = row.querySelector('.flight-dep-terminal')?.value.trim() || "";
+        const seat          = row.querySelector('.flight-seat')?.value.trim() || "";
+        const gate          = row.querySelector('.flight-gate')?.value.trim() || "";
+        const day           = parseInt(row.querySelector('.flight-day')?.value || 1);
 
-        const retCarrier = row.querySelector('.flight-ret-carrier')?.value.trim() || "";
-        const retCode = row.querySelector('.flight-ret-code')?.value.trim() || "";
-        const arrPort = row.querySelector('.flight-arr-port')?.value.trim() || "";
-        const arrTime = row.querySelector('.flight-arr-time')?.value || "";
-        
-        const day = parseInt(row.querySelector('.flight-day')?.value || 1);
-
-        // 🛡️ 只要有填寫起飛、降落機場或航空公司，就視為有效燃料
         if (depPort || arrPort || depCarrier) {
             updatedTransport.push({
-                carrier: depCarrier || retCarrier, // 🚀 航司主權合併
-                code: depCode || retCode,       // 🚀 班號主權合併
-                depPort, // 起飛機場
-                depTime, // 起飛時間
-                arrPort, // 降落機場
-                arrTime, // 降落時間
-                day      // 顯示天數
+                carrier: depCarrier,
+                code: depCode,
+                depPort,
+                depTime,
+                arrPort,
+                arrTime,
+                depTerminal,
+                seat,
+                gate,
+                day
             });
         }
     });
 
     try {
-        // 3. 數據狀態更新與物理指紋對齊
         const nowTs = Date.now();
         state.trips[tripIndex].transport = updatedTransport;
         state.trips[tripIndex].updatedAt = nowTs;
         state.lastLocalEdit = nowTs;
         localStorage.setItem('tf_last_local_edit', nowTs);
 
-        // 4. 固化至磁區
         await dbManager.save(state.trips[tripIndex]);
-        
-        // 5. 介面導通與熱重連
+
         this.modalRemove('edit-transport-modal');
-        
-        // 重新回到詳情頁，觸發渲染引擎掃描新數據
         this.navigateTo('detail', tripId);
-        
+
         uiManager.showToast("✈️", "航班路網與航司數據已同步");
         if (navigator.vibrate) navigator.vibrate(15);
 
@@ -3950,9 +3958,8 @@ getActiveViewEngine() {
 
 
 /** 🔄 [SRS-Bridge-Final] 影子同步：全域自動對焦版 */
-async syncSRSShadow() {
-    // 🚀 訊息優化：由特定等級改為全域軌道掃描
-    uiManager.showToast('🔍', '正在啟動全域標籤磁區校準...');
+async syncSRSShadow({ silent = false } = {}) {
+    if (!silent) uiManager.showToast('🔍', '正在啟動全域標籤磁區校準...');
     
     try {
         const allVault = await dbManager.getAll(dbManager.STORES.TRANS_VAULT);
@@ -3962,25 +3969,19 @@ async syncSRSShadow() {
 
         allVault.forEach(f => {
             const eduVocab = Array.isArray(f.edu_vocab) ? f.edu_vocab : [];
-
             eduVocab.forEach((v, idx) => {
                 const sid = `${f.id}_v_${idx}`;
                 const existingItem = shadowMap.get(sid);
                 
-                // 🚀 1. 等級指紋提取：徹底鑽透混合物件
-                // 優先權：單字內標籤 > 文章總標籤 > 預設 N3
                 let detectedLevel = v.level || f.level || "N3";
                 let sanitizedLevel = String(detectedLevel).trim().toUpperCase();
-                
                 if (!['N1','N2','N3','N4','N5'].includes(sanitizedLevel)) {
                     sanitizedLevel = "N3"; 
                 }
 
-                // 🚀 2. 核心數據提取
                 const word = v["0"]; 
                 const reading = v["1"];
 
-                // 🚀 3. 判定更新：支援「標籤變更」後的物理同步
                 const needsUpdate = !existingItem || 
                                     !existingItem.level || 
                                     existingItem.level !== sanitizedLevel;
@@ -4001,22 +4002,19 @@ async syncSRSShadow() {
         });
 
         if (fuelToProject.length === 0) {
-            uiManager.showToast('✅', '全路網標籤已達真值對焦');
-            if (state.currentView === 'training') App.navigateTo('training');
+            if (!silent) uiManager.showToast('✅', '全路網標籤已達真值對焦');
+            if (!silent && state.currentView === 'training') App.navigateTo('training');
             return;
         }
 
-        // 💾 執行批次寫入
         await dbManager.batchPutSRS(fuelToProject);
         
-        // 🚀 訊息優化：反映全域修復的總筆數
-        uiManager.showToast('✨', `全域校準完畢：已校正 ${fuelToProject.length} 筆標籤偏差`);
-        
-        if (state.currentView === 'training') App.navigateTo('training');
+        if (!silent) uiManager.showToast('✨', `全域校準完畢：已校正 ${fuelToProject.length} 筆標籤偏差`);
+        if (!silent && state.currentView === 'training') App.navigateTo('training');
 
     } catch (err) {
         console.error("❌ [SRS-Sync-Collapse]:", err);
-        uiManager.showToast('⚠️', '全域數據對焦失敗');
+        if (!silent) uiManager.showToast('⚠️', '全域數據對焦失敗');
     }
 },
 
@@ -4169,17 +4167,42 @@ _calcSubAccuracy(results, type) {
     // 🎯 挑戰模式控制中樞 (V2026.ULTRA.SINGLE_CHALLENGE)
     // ============================================================
 
-    /** 🚀 啟動戰鬥倒數儀式 */
-    startChallengeCountdown() {
+startChallengeCountdown() {
+
+    clearInterval(state.challengeTimerInterval);
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeEventLock = false;
+    state.challengeTimerInterval = null;
+    state.challengeAnsTimerInterval = null;
+    state.challengeTotalTime = 60;
+    state.challengeAnsTime = 5;
+    state.challengeAnsTimeBase = 5;
+    state.challengeStreak = 0;
+    state.challengeMaxStreak = 0;
+    state.challengeBuffsGot = 0;
+    state.challengeShield = 0;
+    state.challengeLives = 3;        // 🆕 三條命
+    state.challengeNextBuff = 5;
+    state.challengeTempBoost = null;
+    state.challengeChainActive = false;  // 🆕 連鎖挑戰狀態
+    state.challengeChainCount = 0;       // 🆕 連鎖題目計數
+    state.challengeChainFailed = false;  // 🆕 連鎖是否失敗
+    state.challengeFreezing = false;     // 🆕 冰凍狀態
+    state.challengeFinalizing = false;
+    state.challengeActive = false;
+    state.challengeSessionResults = [];
+    state.recentChallengeIds = [];
+
+    this.navigateTo('training');
+    setTimeout(() => {
         const display = document.getElementById('countdown-display');
         if (!display) return;
-        
+
         let timer = 3;
         if (navigator.vibrate) navigator.vibrate(15);
 
         const run = () => {
             if (timer > 0) {
-                // 視覺脈衝：大字號 + 呼吸動畫
                 display.innerHTML = `
                     <div class="flex flex-col items-center animate-fade-in">
                         <h1 class="text-9xl font-black theme-text-pink animate-ping">${timer}</h1>
@@ -4189,18 +4212,47 @@ _calcSubAccuracy(results, type) {
                 if (navigator.vibrate) navigator.vibrate(5);
                 setTimeout(run, 1000);
             } else {
-                // 狀態機變更：進入戰鬥狀態
                 state.challengeActive = true;
-                state.currentChallengeItem = null; // 強制首題重抽
-                this.navigateTo('training');      // 熱刷新至單兵對敵視圖
+
+// 🎮 遊戲開始，隱藏所有頂部 UI
+document.querySelector('header')?.style.setProperty('display', 'none', 'important');
+document.querySelectorAll('.sticky, .training-header, #level-tabs-track').forEach(el =>
+    el.style.setProperty('display', 'none', 'important')
+);
+document.getElementById('content-container').style.paddingBottom = '0';
+
+state.currentChallengeItem = null;
+state.challengeTimerInterval = setInterval(() => {
+                    if (state.challengeFreezing) return; // 🆕 冰凍時跳過
+                    state.challengeTotalTime--;
+
+                    const timeEl = document.getElementById('challenge-total-time');
+                    if (timeEl) {
+                        timeEl.textContent = state.challengeTotalTime;
+                        if (state.challengeTotalTime <= 10) timeEl.style.color = '#E24B4A';
+                    }
+
+                    const elapsed = 60 - state.challengeTotalTime;
+                    const reduction = Math.floor(elapsed / 20);
+                    let cur = state.challengeAnsTimeBase - reduction;
+                    if (state.challengeTempBoost) cur += state.challengeTempBoost.sec;
+                    state.challengeAnsTime = Math.max(2, cur);
+
+                    if (state.challengeTotalTime <= 0) {
+                        clearInterval(state.challengeTimerInterval);
+                        state.challengeTimerInterval = null;
+                        this.finalizeChallenge(state.challengeSessionResults);
+                    }
+                }, 1000);
+
+                this.navigateTo('training');
             }
         };
         run();
-    },
+    }, 300);
+},
 
 
-
-/** 🧠 挑戰答題判斷中樞 (V2026.ULTRA.FINAL_STABLE) */
 checkChallenge(id, selected, correct) {
     const cardEl = document.getElementById(`challenge-${id}`);
     const activeMode = cardEl?.getAttribute('data-mode') || '讀';
@@ -4208,7 +4260,7 @@ checkChallenge(id, selected, correct) {
 
     const { cleanSelected, cleanCorrect } = this._sanitizeChallengeData(selected, correct, challengeType);
     const isSuccess = (cleanSelected === cleanCorrect);
-    
+
     if (!state.challengeSessionResults) state.challengeSessionResults = [];
     state.challengeSessionResults.push({ id, success: isSuccess, mode: activeMode, type: challengeType });
 
@@ -4219,20 +4271,641 @@ checkChallenge(id, selected, correct) {
     this._emitChallengeFeedback(isSuccess, cleanCorrect, activeMode);
     this.submitTrainingResult(id, isSuccess);
 
-    // 🚀 8. 物理分流發動機：執行「一錯即死」熔斷協定
     if (!isSuccess) {
-        // 💀 偵測到戰敗：停止連發，執行結算噴發
-        console.warn("💀 [Defeat-Melt] 答題錯誤，停止重繪，導向結算磁區");
-        
-        // 延遲 800ms 結算，讓使用者看清楚正確答案（Feedback）後再切換
-        setTimeout(() => {
-            this.finalizeChallenge(state.challengeSessionResults);
-        }, 800);
-        
-    } else {
-        // ✅ 挑戰成功：繼續維持自動連發
-        this._triggerNextChallenge(activeMode);
+        // 🆕 連鎖挑戰中失敗：扣時間但不扣命
+        if (state.challengeChainActive) {
+            state.challengeChainFailed = true;
+            state.challengeChainActive = false;
+            state.challengeChainCount = 0;
+            state.challengeTotalTime = Math.max(5, state.challengeTotalTime - 15);
+            uiManager.showToast('💥', '連鎖失敗！-15秒');
+            if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+            setTimeout(() => this._triggerNextChallenge(activeMode), 1000);
+            return;
+        }
+
+        // 🆕 扣命邏輯
+        state.challengeLives = Math.max(0, (state.challengeLives || 1) - 1);
+        this._updateLivesUI();
+
+        if (state.challengeLives <= 0) {
+            uiManager.showToast('💀', 'ゲームオーバー');
+            if (navigator.vibrate) navigator.vibrate([50, 100, 50]);
+            clearInterval(state.challengeTimerInterval);
+            setTimeout(() => this.finalizeChallenge(state.challengeSessionResults), 800);
+        } else {
+            uiManager.showToast('❤️', `残り${state.challengeLives}機`);
+            if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
+            state.challengeStreak = 0;
+            setTimeout(() => this._triggerNextChallenge(activeMode), 1000);
+        }
+        return;
     }
+
+    // ✅ 正解分支
+    state.challengeStreak = (state.challengeStreak || 0) + 1;
+    state.challengeMaxStreak = Math.max(state.challengeMaxStreak || 0, state.challengeStreak);
+
+    if (state.challengeTempBoost) {
+        state.challengeTempBoost.left--;
+        if (state.challengeTempBoost.left <= 0) state.challengeTempBoost = null;
+    }
+
+    // 🆕 連鎖挑戰進度
+    if (state.challengeChainActive) {
+        state.challengeChainCount++;
+        this._updateChainUI();
+        if (state.challengeChainCount >= 3) {
+            state.challengeChainActive = false;
+            state.challengeChainCount = 0;
+            state.challengeTotalTime += 20;
+            uiManager.showToast('🔥', '連鎖成功！+20秒');
+            if (navigator.vibrate) navigator.vibrate([15, 30, 15, 50]);
+            this._triggerNextChallenge(activeMode);
+            return;
+        }
+        this._triggerNextChallenge(activeMode);
+        return;
+    }
+
+    const successCount = state.challengeSessionResults.filter(r => r.success).length;
+    const isBuff5Trigger = successCount > 0 && successCount % 5 === 0;
+
+    if (isBuff5Trigger) {
+        clearInterval(state.challengeTimerInterval);
+        clearInterval(state.challengeAnsTimerInterval);
+        state.challengeAnsTimerInterval = null;
+        setTimeout(() => this._showChallengeBuff(), 800);
+        return;
+    }
+
+// 🆕 在 checkChallenge 隨機事件觸發前，先設定事件鎖
+const roll = Math.random();
+if (roll < 0.03) {
+    state.challengeEventLock = true; // 🔒 鎖住，防止其他 setTimeout 蓋掉畫面
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+    clearInterval(state.challengeTimerInterval);
+    state.challengeTimerInterval = null;
+    setTimeout(() => this._showFreezeCard(), 600);
+} else if (roll < 0.13) {
+    state.challengeEventLock = true;
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+    setTimeout(() => this._showChainChallenge(), 600);
+} else if (roll < 0.33) {
+    state.challengeEventLock = true;
+    clearInterval(state.challengeTimerInterval);
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+    setTimeout(() => this._showChestDrop(), 600);
+} else {
+    this._triggerNextChallenge(activeMode);
+}
+},
+
+_updateLivesUI() {
+    const livesEl = document.getElementById('challenge-lives');
+    if (!livesEl) return;
+    const lives = state.challengeLives || 0;
+    livesEl.innerHTML = [1,2,3].map(i =>
+        `<i class="fa-solid fa-heart" style="font-size:14px; color:${i <= lives ? '#E24B4A' : '#E2E8F0'};"></i>`
+    ).join('');
+},
+
+_updateChainUI() {
+    const chainEl = document.getElementById('challenge-chain-progress');
+    if (!chainEl) return;
+    const count = state.challengeChainCount || 0;
+    chainEl.innerHTML = [1,2,3].map(i =>
+        `<div style="
+            width: 28px; height: 6px; border-radius: 3px;
+            background: ${i <= count ? '#E24B4A' : '#E2E8F0'};
+            transition: background 0.3s;
+        "></div>`
+    ).join('');
+},
+
+_showChainChallenge() {
+    // 🛡️ 鎖住，防止殘留 setTimeout 蓋掉畫面
+    state.challengeEventLock = true;
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+
+    state.challengeChainActive = true;
+    state.challengeChainCount = 0;
+    state.challengeChainFailed = false;
+
+    const container = document.getElementById('content-container');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div style="padding: 32px 16px 48px; text-align: center;">
+            <div style="margin-bottom: 24px;">
+                <div style="
+                    width: 80px; height: 80px; border-radius: 24px;
+                    background: #FCEBEB;
+                    display: flex; align-items: center; justify-content: center;
+                    margin: 0 auto 16px;
+                    border: 4px solid #E24B4A;
+                ">
+                    <i class="fa-solid fa-link" style="font-size: 36px; color: #E24B4A;"></i>
+                </div>
+                <span style="
+                    display: inline-block;
+                    background: #FCEBEB; color: #A32D2D;
+                    font-size: 11px; font-weight: 700;
+                    padding: 3px 14px; border-radius: 20px;
+                    letter-spacing: 0.08em; margin-bottom: 10px;
+                ">高風險・高報酬</span>
+                <p style="font-size: 22px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 8px;">連鎖チャレンジ</p>
+                <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 24px;">次の3問すべて正解 → <b style="color:#3B6D11;">+20秒</b><br>1問でも誤り → <b style="color:#E24B4A;">-15秒</b>（命は減らない）</p>
+            </div>
+
+            <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 32px;">
+                ${[1,2,3].map(() => `
+                    <div style="width: 60px; height: 8px; border-radius: 4px; background: #E2E8F0;"></div>
+                `).join('')}
+            </div>
+
+            <button onclick="App._startChainChallengeGame()"
+                style="
+                    width: 100%; max-width: 280px;
+                    padding: 16px;
+                    background: #E24B4A; color: white;
+                    border: none; border-radius: var(--border-radius-lg);
+                    font-size: 15px; font-weight: 700;
+                    cursor: pointer;
+                ">受けて立つ！</button>
+
+            <button onclick="App._skipChainChallenge()"
+                style="
+                    display: block; margin: 12px auto 0;
+                    background: none; border: none;
+                    font-size: 13px; color: var(--color-text-secondary);
+                    cursor: pointer;
+                ">スキップする</button>
+        </div>`;
+},
+
+_startChainChallengeGame() {
+    state.challengeEventLock = false; // 🔓
+    state.currentChallengeItem = null;
+    this.navigateTo('training');
+},
+
+_skipChainChallenge() {
+    state.challengeChainActive = false;
+    state.challengeChainCount = 0;
+    state.challengeEventLock = false; // 🔓
+    state.currentChallengeItem = null;
+    this.navigateTo('training');
+},
+
+_showFreezeCard() {
+    // 🛡️ 先停掉答題倒數，否則時間到會蓋掉凍結畫面
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+    
+    // 🛡️ 凍結總計時器
+    state.challengeFreezing = true;
+
+    const container = document.getElementById('content-container');
+    if (!container) return;
+
+    const freezeSec = 8;
+    let left = freezeSec;
+
+
+    container.innerHTML = `
+        <div style="padding: 32px 16px 48px; text-align: center;">
+            <div style="
+                width: 80px; height: 80px; border-radius: 24px;
+                background: #E6F1FB;
+                display: flex; align-items: center; justify-content: center;
+                margin: 0 auto 16px;
+                border: 4px solid #378ADD;
+            ">
+                <i class="fa-solid fa-snowflake" style="font-size: 36px; color: #185FA5;"></i>
+            </div>
+            <span style="
+                display: inline-block;
+                background: #E6F1FB; color: #0C447C;
+                font-size: 11px; font-weight: 700;
+                padding: 3px 14px; border-radius: 20px;
+                letter-spacing: 0.08em; margin-bottom: 10px;
+            ">超稀有ドロップ</span>
+            <p style="font-size: 22px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 8px;">❄️ タイム凍結</p>
+            <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 8px;">残り時間が<b style="color:#185FA5;">${freezeSec}秒間</b>凍結！</p>
+            <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 32px; opacity: 0.7;">答題は普通に続けてください</p>
+            <p id="freeze-countdown" style="font-size: 64px; font-weight: 700; color: #185FA5; margin: 0 0 32px;">${freezeSec}</p>
+
+            <button onclick="App._skipFreezeCard()"
+                style="
+                    background: none; border: 0.5px solid var(--color-border-tertiary);
+                    border-radius: var(--border-radius-lg);
+                    padding: 12px 32px;
+                    font-size: 13px; color: var(--color-text-secondary);
+                    cursor: pointer;
+                ">今すぐ次の問題へ</button>
+        </div>`;
+
+    if (navigator.vibrate) navigator.vibrate([10, 20, 10, 20, 10]);
+
+    const tick = setInterval(() => {
+    left--;
+    const el = document.getElementById('freeze-countdown');
+    if (el) el.textContent = left;
+
+    // tick 結束
+if (left <= 0) {
+    clearInterval(tick);
+    state.challengeFreezeTick = null;
+    state.challengeFreezing = false;
+    state.currentChallengeItem = null;
+    // 🛡️ 重啟總計時器
+    this._restartChallengeTimer();
+    state.challengeEventLock = false; // 🔓 解鎖
+    this.navigateTo('training');
+}
+}, 1000);
+
+state.challengeFreezeTick = tick;
+},
+
+// _skipFreezeCard
+_skipFreezeCard() {
+    clearInterval(state.challengeFreezeTick);
+    state.challengeFreezeTick = null;
+    state.challengeFreezing = false;
+    state.challengeEventLock = false; // 🔓
+    state.currentChallengeItem = null;
+    this._restartChallengeTimer();
+    this.navigateTo('training');
+},
+
+_restartChallengeTimer() {
+    clearInterval(state.challengeTimerInterval);
+    state.challengeTimerInterval = setInterval(() => {
+        if (state.challengeFreezing) return;
+        state.challengeTotalTime--;
+
+        const timeEl = document.getElementById('challenge-total-time');
+        if (timeEl) {
+            timeEl.textContent = state.challengeTotalTime;
+            if (state.challengeTotalTime <= 10) timeEl.style.color = '#E24B4A';
+        }
+
+        const elapsed = 60 - state.challengeTotalTime;
+        const reduction = Math.floor(elapsed / 20);
+        let cur = state.challengeAnsTimeBase - reduction;
+        if (state.challengeTempBoost) cur += state.challengeTempBoost.sec;
+        state.challengeAnsTime = Math.max(2, cur);
+
+        if (state.challengeTotalTime <= 0) {
+            clearInterval(state.challengeTimerInterval);
+            state.challengeTimerInterval = null;
+            this.finalizeChallenge(state.challengeSessionResults);
+        }
+    }, 1000);
+},
+
+
+_showChestDrop() {
+    // 🛡️ 鎖住，防止殘留 setTimeout 蓋掉畫面
+    state.challengeEventLock = true;
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+    clearInterval(state.challengeTimerInterval);
+    state.challengeTimerInterval = null;
+
+    const CHESTS = [
+        { tier: 'common', icon: 'fa-box', bg: '#F1EFE8', color: '#5F5E5A', label: '普通箱',
+          rewards: [
+            { name: '+3秒',       desc: '残り時間が3秒増加',          apply: () => { state.challengeTotalTime += 3; } },
+            { name: 'ヒント付き', desc: '次の1問に正解がハイライト',   apply: () => { state.challengeHint = true; } },
+          ]
+        },
+        { tier: 'silver', icon: 'fa-box-open', bg: '#E6F1FB', color: '#185FA5', label: '銀箱',
+          rewards: [
+            { name: '+8秒',          desc: '残り時間が8秒増加',         apply: () => { state.challengeTotalTime += 8; } },
+            { name: '解答時間 +1秒', desc: '次の5問の解答時間が+1秒',   apply: () => { state.challengeTempBoost = { sec: 1, left: 5 }; } },
+            { name: '凍結 5秒',      desc: '時間が5秒間停止',           apply: () => { state.challengeFreezing = true; setTimeout(() => { state.challengeFreezing = false; }, 5000); } },
+          ]
+        },
+        { tier: 'gold', icon: 'fa-trophy', bg: '#FAEEDA', color: '#BA7517', label: '金箱',
+          rewards: [
+            { name: '+15秒',             desc: '残り時間が15秒増加',           apply: () => { state.challengeTotalTime += 15; } },
+            { name: '失敗免除 ×1',       desc: '次の失敗を1回免除する',        apply: () => { state.challengeShield = (state.challengeShield || 0) + 1; } },
+            { name: '解答時間永久 +1秒', desc: '解答制限時間が永久に1秒増加',  apply: () => { state.challengeAnsTimeBase += 1; state.challengeAnsTime += 1; } },
+            { name: '残機 +1',           desc: 'ライフが1つ回復',              apply: () => { state.challengeLives = Math.min(3, (state.challengeLives || 0) + 1); App._updateLivesUI(); } },
+          ]
+        },
+    ];
+
+    const tierRoll = Math.random();
+    const chest = tierRoll < 0.05 ? CHESTS[2]
+                : tierRoll < 0.25 ? CHESTS[1]
+                : CHESTS[0];
+
+    const reward = chest.rewards[Math.floor(Math.random() * chest.rewards.length)];
+    state._pendingChestReward = reward;
+
+    const TIER_BORDER = {
+        common: '4px solid #B4B2A9',
+        silver: '4px solid #378ADD',
+        gold:   '4px solid #EF9F27',
+    };
+
+    const container = document.getElementById('content-container');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div style="padding: 32px 16px 48px; text-align: center;">
+            <div style="margin-bottom: 24px;">
+                <div style="
+                    width: 80px; height: 80px; border-radius: 24px;
+                    background: ${chest.bg};
+                    display: flex; align-items: center; justify-content: center;
+                    margin: 0 auto 16px;
+                    border: ${TIER_BORDER[chest.tier]};
+                ">
+                    <i class="fa-solid ${chest.icon}" style="font-size: 36px; color: ${chest.color};"></i>
+                </div>
+                <span style="
+                    display: inline-block;
+                    background: ${chest.bg}; color: ${chest.color};
+                    font-size: 11px; font-weight: 700;
+                    padding: 3px 14px; border-radius: 20px;
+                    letter-spacing: 0.08em; margin-bottom: 10px;
+                ">${chest.label}を発見！</span>
+                <p style="font-size: 22px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 4px;">寶箱ドロップ</p>
+                <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0;">タップして開けてください</p>
+            </div>
+
+            <div id="chest-reward-card" onclick="App._revealChestReward()"
+                style="
+                    background: var(--color-background-primary);
+                    border: 0.5px solid var(--color-border-tertiary);
+                    border-left: ${TIER_BORDER[chest.tier]};
+                    border-radius: var(--border-radius-lg);
+                    padding: 28px 18px;
+                    cursor: pointer;
+                    transition: transform 0.15s;
+                    margin-bottom: 12px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 12px;
+                    min-height: 80px;
+                "
+                onmouseenter="this.style.transform='scale(1.02)'"
+                onmouseleave="this.style.transform='scale(1)'">
+                <i class="fa-solid fa-question" style="font-size: 32px; color: var(--color-text-secondary); opacity: 0.3;"></i>
+                <span style="font-size: 15px; color: var(--color-text-secondary); font-weight: 500;">タップして開封</span>
+            </div>
+
+            <p style="font-size: 11px; color: var(--color-text-secondary); opacity: 0.5;">開封後、ゲームが再開されます</p>
+        </div>`;
+},
+
+
+_revealChestReward() {
+    const reward = state._pendingChestReward;
+    if (!reward) return;
+
+    reward.apply();
+    state.challengeBuffsGot = (state.challengeBuffsGot || 0) + 1;
+    state._pendingChestReward = null;
+
+    uiManager.showToast('🎁', reward.name);
+    if (navigator.vibrate) navigator.vibrate([15, 30, 15]);
+
+    const card = document.getElementById('chest-reward-card');
+    if (card) {
+        card.innerHTML = `
+            <i class="fa-solid fa-gift" style="font-size: 24px; color: #EF9F27;"></i>
+            <div style="text-align: left;">
+                <p style="font-size: 15px; font-weight: 500; color: var(--color-text-primary); margin: 0 0 4px;">${reward.name}</p>
+                <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0;">${reward.desc}</p>
+            </div>`;
+        card.style.cursor = 'default';
+        card.onclick = null;
+        card.style.borderLeftColor = '#EF9F27';
+    }
+
+    setTimeout(() => {
+        state.challengeEventLock = false; // 🔓 解鎖
+        this._restartChallengeTimer();    // 統一重啟計時器
+        state.currentChallengeItem = null;
+        this.navigateTo('training');
+    }, 1200);
+},
+
+_showChallengeBuff() {
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+    const BUFFS = {
+        legend: [
+            { name:'時間延長 +30秒', desc:'残り時間が30秒増加', rarity:'legend',
+              apply: () => { state.challengeTotalTime += 30; }},
+            { name:'解答時間永久 +1秒', desc:'解答制限時間が永久に1秒増加', rarity:'legend',
+              apply: () => { state.challengeAnsTimeBase += 1; state.challengeAnsTime += 1; }},
+            { name:'失敗免除 ×1', desc:'次の失敗を1回免除する', rarity:'legend',
+              apply: () => { state.challengeShield = (state.challengeShield || 0) + 1; }},
+            { name:'残機 +1', desc:'ライフが1つ回復する', rarity:'legend',
+              apply: () => { state.challengeLives = Math.min(3, (state.challengeLives || 0) + 1); this._updateLivesUI(); }},
+        ],
+        high: [
+            { name:'時間延長 +10秒', desc:'残り時間が10秒増加', rarity:'high',
+              apply: () => { state.challengeTotalTime += 10; }},
+            { name:'解答時間 +1秒（10問）', desc:'次の10問の解答時間が+1秒', rarity:'high',
+              apply: () => { state.challengeTempBoost = { sec: 1, left: 10 }; }},
+            { name:'連鎖免疫 ×1', desc:'次の連鎖チャレンジ失敗時の時間減少を無効化', rarity:'high',
+              apply: () => { state.challengeChainImmune = true; }},
+        ],
+        normal: [
+            { name:'次の問題ヒント付き', desc:'次の1問に正解がハイライト表示', rarity:'normal',
+              apply: () => { state.challengeHint = true; }},
+            { name:'正解ボーナス +2', desc:'次の正解で2問分カウント', rarity:'normal',
+              apply: () => { state.challengeBonus = 2; }},
+        ],
+        nerf: [
+            { name:'解答時間 -1秒', desc:'解答制限時間が1秒減少', rarity:'nerf',
+              apply: () => { state.challengeAnsTime = Math.max(2, (state.challengeAnsTime || 5) - 1); state.challengeAnsTimeBase = Math.max(2, (state.challengeAnsTimeBase || 5) - 1); }},
+            { name:'時間減少 -5秒', desc:'残り時間が5秒減少', rarity:'nerf',
+              apply: () => { state.challengeTotalTime = Math.max(5, (state.challengeTotalTime || 60) - 5); }},
+        ]
+    };
+
+    const RARITY_COLOR = {
+        legend: { bg:'#FAC775', color:'#412402', label:'伝説' },
+        high:   { bg:'#B5D4F4', color:'#042C53', label:'上級' },
+        normal: { bg:'#EAF3DE', color:'#173404', label:'通常' },
+        nerf:   { bg:'#FCEBEB', color:'#501313', label:'弱体' },
+    };
+
+    const rollRarity = () => {
+        const r = Math.random();
+        if (r < 0.05) return 'legend';
+        if (r < 0.20) return 'high';
+        if (r < 0.60) return 'normal';
+        return 'nerf';
+    };
+
+    const picks = [0,1,2].map(() => {
+        const rarity = rollRarity();
+        const pool = BUFFS[rarity];
+        const buff = pool[Math.floor(Math.random() * pool.length)];
+        return { ...buff, rarity };
+    });
+
+    // 暫存 buff 選項
+    state._pendingBuffs = picks;
+
+const container = document.getElementById('content-container');
+if (!container) return;
+
+const successCount = (state.challengeSessionResults || []).filter(r => r.success).length;
+
+const RARITY_ICON = {
+        legend: 'fa-crown',
+        high:   'fa-bolt',
+        normal: 'fa-circle-check',
+        nerf:   'fa-triangle-exclamation',
+    };
+    const RARITY_LEFT = {
+        legend: '4px solid #EF9F27',
+        high:   '4px solid #378ADD',
+        normal: '4px solid #639922',
+        nerf:   '4px solid #E24B4A',
+    };
+    const RARITY_ICON_BG = {
+        legend: '#FAEEDA',
+        high:   '#E6F1FB',
+        normal: '#EAF3DE',
+        nerf:   '#FCEBEB',
+    };
+    const RARITY_ICON_COLOR = {
+        legend: '#BA7517',
+        high:   '#185FA5',
+        normal: '#3B6D11',
+        nerf:   '#A32D2D',
+    };
+
+    container.innerHTML = `
+        <div style="padding: 24px 16px 40px;">
+            <div style="text-align:center; margin-bottom: 20px;">
+                <span style="
+                    display: inline-block;
+                    background: #FAC775; color: #412402;
+                    font-size: 11px; font-weight: 700;
+                    padding: 3px 12px; border-radius: 20px;
+                    letter-spacing: 0.08em; margin-bottom: 10px;
+                ">${successCount}問正解</span>
+                <p style="font-size: 22px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 4px;">バフ獲得チャンス</p>
+                <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0;">1つ選んでください</p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                ${picks.map((buff, i) => {
+                    const rc = RARITY_COLOR[buff.rarity];
+                    const isTop = buff.rarity === 'legend' || buff.rarity === 'high';
+                    return `
+                    <div onclick="App._applyChallengeBuff(${i})"
+                        style="
+                            background: var(--color-background-primary);
+                            border: 0.5px solid var(--color-border-tertiary);
+                            border-left: ${RARITY_LEFT[buff.rarity]};
+                            border-radius: var(--border-radius-lg);
+                            padding: 16px 18px;
+                            display: flex;
+                            align-items: flex-start;
+                            gap: 14px;
+                            cursor: pointer;
+                            position: relative;
+                            transition: transform 0.15s;
+                        "
+                        onmouseenter="this.style.transform='scale(1.02)'"
+                        onmouseleave="this.style.transform='scale(1)'">
+
+                        ${isTop ? `<div style="
+                            position: absolute; top: -10px; left: 16px;
+                            background: ${rc.bg}; color: ${rc.color};
+                            font-size: 10px; font-weight: 700;
+                            padding: 2px 10px; border-radius: 20px;
+                        ">${rc.label}</div>` : ''}
+
+                        <div style="
+                            width: 40px; height: 40px; border-radius: 10px;
+                            background: ${RARITY_ICON_BG[buff.rarity]};
+                            display: flex; align-items: center; justify-content: center;
+                            flex-shrink: 0;
+                            margin-top: ${isTop ? '6px' : '0'};
+                        ">
+                            <i class="fa-solid ${RARITY_ICON[buff.rarity]}"
+                               style="font-size: 18px; color: ${RARITY_ICON_COLOR[buff.rarity]};"></i>
+                        </div>
+
+                        <div style="flex: 1; margin-top: ${isTop ? '6px' : '0'};">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap;">
+                                ${!isTop ? `<span style="
+                                    font-size: 10px; font-weight: 700; padding: 2px 8px;
+                                    background: ${rc.bg}; color: ${rc.color};
+                                    border-radius: 20px;
+                                ">${rc.label}</span>` : ''}
+                                <span style="font-size: 15px; font-weight: 500; color: var(--color-text-primary);">${buff.name}</span>
+                            </div>
+                            <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0; line-height: 1.5;">${buff.desc}</p>
+                        </div>
+
+                        <i class="fa-solid fa-chevron-right" style="
+                            font-size: 14px;
+                            color: var(--color-text-secondary);
+                            margin-top: ${isTop ? '16px' : '10px'};
+                            flex-shrink: 0;
+                        "></i>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+},
+
+_applyChallengeBuff(idx) {
+    const buff = state._pendingBuffs?.[idx];
+    if (!buff) return;
+
+    buff.apply();
+    state.challengeBuffsGot = (state.challengeBuffsGot || 0) + 1;
+    state._pendingBuffs = null;
+
+    const RARITY_COLOR = {
+        legend: { bg:'#FAC775', color:'#412402', label:'伝説' },
+        high:   { bg:'#B5D4F4', color:'#042C53', label:'上級' },
+        normal: { bg:'#EAF3DE', color:'#173404', label:'通常' },
+        nerf:   { bg:'#FCEBEB', color:'#501313', label:'弱体' },
+    };
+    const rc = RARITY_COLOR[buff.rarity];
+    uiManager.showToast('✨', `${rc.label}：${buff.name}`);
+
+    // 重啟計時器
+    // 重啟計時器（先清掉舊的）
+    clearInterval(state.challengeTimerInterval);
+    state.challengeTimerInterval = setInterval(() => {
+        state.challengeTotalTime--;
+        const timeEl = document.getElementById('challenge-total-time');
+        if (timeEl) {
+            timeEl.textContent = state.challengeTotalTime;
+            if (state.challengeTotalTime <= 10) timeEl.style.color = '#E24B4A';
+        }
+        if (state.challengeTotalTime <= 0) {
+            clearInterval(state.challengeTimerInterval);
+            this.finalizeChallenge(state.challengeSessionResults);
+        }
+    }, 1000);
+
+    state.currentChallengeItem = null;
+    this.navigateTo('training');
 },
 
 /** 🛡️ [Private] 數據洗滌器：封殺 HTML 雜質與特殊符號 */
@@ -4267,80 +4940,92 @@ _emitChallengeFeedback(isSuccess, correct, mode) {
     }
 },
 
-/** 🔄 [Private] 連發推進器：狀態自癒與全量重連 (V2026.ULTRA.STABLE_FINAL) */
 _triggerNextChallenge(mode) {
-    // 🚀 1. 物理狀態粉碎 (狀態自癒核心)
-    // 💡 職人診斷：必須在延遲開始前立即抹除舊指針，封殺任何非同步產生的數據殘留
-    state.currentChallengeItem = null; 
 
-    // 🚀 2. 聲學總線復位
+
+    // 🛡️ 有特殊事件進行中，不執行
+    if (state.challengeEventLock) return;
+
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+    state.currentChallengeItem = null;
+
     if (mode === '聽') {
         if (typeof this.stopAllSpeech === 'function') {
             this.stopAllSpeech();
-            // 🔓 解除熔斷鎖：確保下一題播報不被攔截
             window.JP_AUDIO_STOP_SIGNAL = false;
             window.EN_AUDIO_STOP_SIGNAL = false;
         }
     }
 
-    // 🚀 3. 介面地基清理：移除所有可能阻塞線程的 UI 殘留 (Toast/氣泡)
     const residualUI = document.querySelectorAll('#global-ui-toast, .ui-toast, [id^="mini-confirm"]');
     residualUI.forEach(el => el.remove());
 
-    // 🚀 4. 連發時序導通
-    // 將延遲微調至 1100ms：在維持節奏感的同時，給予 IndexedDB 充足的寫入窗口
     setTimeout(() => {
-        // 🔒 物理鎖定挑戰狀態
-        state.challengeActive = true;
+        // 🛡️ 結算中就不要再繼續了
+        if (state.challengeFinalizing || !state.challengeActive) return;
 
-        console.log(`🚀 [Challenge-Ignition] 執行磁區重繪 | 模式: ${mode} | 剩餘冷卻 ID: ${state.recentChallengeIds?.length || 0}`);
-        
-        // 5. 執行路網重連 (真值刷新)
-        // 💡 職人提醒：此處 navigateTo 會觸發 executeViewLogic -> renderTrainingWall 
-        // 配合 View 側的動態冷卻修正，此時必能成功抽題
+        state.challengeActive = true;
         this.navigateTo('training');
 
-        // 🚀 6. 異步二次點火保險 (Anti-Stuck Shield)
+        // 🛡️ 二次點火保險：加上雙重防護
         setTimeout(() => {
+            // 結算中或已離開挑戰模式就不觸發
+            if (state.challengeFinalizing || !state.challengeActive) return;
+            
             const cardFound = !!document.querySelector('.challenge-card');
-            if (!cardFound && state.challengeActive) {
-                console.warn("⚠️ [View-Stuck-Detected] 偵測到渲染坍塌，啟動二次強力導通");
-                // 強制清空緩存再次嘗試
+            if (!cardFound) {
                 state.currentChallengeItem = null;
                 this.navigateTo('training');
             }
-        }, 400); 
+        }, 400);
     }, 1100);
 },
 
-/** 🚀 [Challenge-Logic] 挑戰賽果計算與持久化 (V2026.ULTRA.FINAL_FIX) */
 finalizeChallenge(results = []) {
+
+
+
+    if (state.challengeFinalizing) return;
+
+// 🎮 恢復頂部 UI
+document.querySelector('header')?.style.removeProperty('display');
+document.querySelectorAll('.sticky, .training-header, #level-tabs-track').forEach(el => 
+    el.style.removeProperty('display')
+);
+document.getElementById('content-container').style.paddingBottom = '';
+
+
+    state.challengeFinalizing = true;
+
+    clearInterval(state.challengeTimerInterval);
+    state.challengeTimerInterval = null;
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+
+    // 🛡️ 先把 challengeActive 關掉，阻斷所有還在 setTimeout 裡的 navigateTo
+    state.challengeActive = false;
+
     if (!results || results.length === 0) {
-        state.challengeActive = false;
+        state.challengeFinalizing = false;
         this.navigateTo('training');
         return;
     }
 
-    // 1. 🚀 數據精煉：改用「擊破數」邏輯而非純百分比
     const total = results.length;
     const successCount = results.filter(r => r.success).length;
-    
-    // 💡 職人診斷：精確分流聽力與文字軌道，並支援多種 type 標籤
     const audioTasks = results.filter(r => r.type === 'listening');
     const visualTasks = results.filter(r => r.type !== 'listening');
 
-    // 2. 🚀 紀錄固化：封裝 UI 需要的數據結構
     const record = {
         id: `CHAL_${Date.now()}`,
         timestamp: Date.now(),
         level: state.trainingContext?.level || 'All',
-        accuracy: Math.round((successCount / total) * 100), // 頂部大圓盤用
-        
-        // 🚀 你要求的核心擊破數據
+        accuracy: Math.round((successCount / total) * 100),
         sessionCorrect: successCount,
         sessionTotal: total,
-        
-        // 🚀 題型統計對位
+        maxStreak: state.challengeMaxStreak || 0,
+        buffsGot: state.challengeBuffsGot || 0,
         audioStats: {
             correct: audioTasks.filter(r => r.success).length,
             total: audioTasks.length
@@ -4351,23 +5036,31 @@ finalizeChallenge(results = []) {
         }
     };
 
-    // 3. 持久化 (保持 50 筆上限)
     try {
         let history = JSON.parse(localStorage.getItem('tf_challenge_history') || '[]');
-        history.unshift(record); 
-        localStorage.setItem('tf_challenge_history', JSON.stringify(history.slice(0, 50))); 
+        history.unshift(record);
+        localStorage.setItem('tf_challenge_history', JSON.stringify(history.slice(0, 50)));
     } catch (e) { console.warn("⚠️ [Storage-Bus] 歷史軌道受阻", e); }
 
-    // 4. 🚀 狀態與生命週期重置
-    state.challengeActive = false;
     state.currentChallengeItem = null;
-    state.challengeSessionResults = []; 
+    state.challengeSessionResults = [];
+    state.challengeStreak = 0;
+    state.challengeMaxStreak = 0;
+    state.challengeBuffsGot = 0;
+    state.challengeShield = 0;
+    state.challengeLives = 3;
+    state.challengeTempBoost = null;
+    state.challengeChainActive = false;
+    state.challengeChainCount = 0;
+    state.challengeFreezing = false;
 
-    // 5. 🚀 視覺對焦噴發
+    // 🛡️ challengeFinalizing 留著 true 直到報表渲染完才放開
     if (window.translationView?.renderChallengeReport) {
         window.translationView.renderChallengeReport(record);
+        // 報表渲染完後才解鎖，防止這段期間被重複呼叫
+        setTimeout(() => { state.challengeFinalizing = false; }, 1000);
     } else {
-        console.error("❌ [View-Collapse] 找不到報表渲染零件");
+        state.challengeFinalizing = false;
         this.navigateTo('training');
     }
 },
@@ -5030,75 +5723,70 @@ syncShoppingAiPrompt(query) {
 
 /** 🔄 數據同步中繼站：全磁區對位版 (V2026.ULTRA.FINAL_MIRROR) */
 async triggerFirebaseSync() {
-    // 🛡️ 1. 物理攔截器：封殺未對焦身分
     if (!state.userId || state.userId === 'guest_sector' || !state.userProfile) {
         uiManager.showToast('🔒', '請先完成 Google 登入以執行同步');
         this.navigateTo('backup');
         return;
     }
-
     console.log("🔥 [App] 啟動全境磁區掃描與快照封裝...");
     uiManager.showToast('🚀', '正在採樣全量燃料...');
-
     try {
-        // 🚀 2. 跨磁區數據提領 (Cross-Sector Sampling)
-        // 💡 職人診斷：從 IndexedDB 提領靈感精煉廠與全量語料，並從內存提取行程與購物清單
-        const [transVault, backlogItems] = await Promise.all([
+        const [transVault, backlogItems, srsItems] = await Promise.all([
             dbManager.getAll(dbManager.STORES.TRANS_VAULT),
-            dbManager.getAll(dbManager.STORES.BACKLOG)
+            dbManager.getAll(dbManager.STORES.BACKLOG),
+            dbManager.getAll(dbManager.STORES.SRS_META)
         ]);
-
-        // 🚀 3. 封裝大一統燃料包 (Snapshot Master Bundle)
-        // 確保購物清單 (shoppingList) 與緊急資訊 (emergencyVault) 隨行程軌道發送
         const fullDataPayload = {
-            trips: state.trips,              // 包含內嵌的行程內購物與救援資訊
-            backlogs: backlogItems,           // 靈感精煉廠全量原子
-            translations: transVault,         // 全量翻譯語料燃料
-            config: {                         // 同步系統偏好設定
+            trips: state.trips,
+            backlogs: backlogItems,
+            translations: transVault,
+            srs: srsItems, // 🚀 [新增] 特訓小卡一起打包
+            config: {
                 theme: localStorage.getItem('tf_theme_key'),
                 voice: localStorage.getItem('tf_voice_id')
             }
         };
-
-        // 🚀 4. 更新雲端履歷指紋 (Stats Metadata)
         const statsSnapshot = {
-            tripCount: state.trips.length,
+            tripCount:        state.trips.length,
             translationCount: transVault.length,
-            backlogCount: backlogItems.length,
-            // 穿透掃描全行程中的救援密鑰總數
-            emergencyCount: state.trips.reduce((acc, t) => acc + (t.emergencyVault?.length || 0), 0),
-            updatedAt: Date.now()
+            realtimeCount:    transVault.filter(i => i.type === 'article_package' || (!i.type && i.segments)).length,
+            contextualCount:  transVault.filter(i => i.type === 'contextual').length,
+            srsCount:         srsItems?.length || 0,
+            backlogCount:     backlogItems.length,
+            emergencyCount:   state.trips.reduce((acc, t) => acc + (t.emergencyVault?.length || 0), 0),
+            shoppingCount:    state.trips.reduce((acc, t) => acc + (t.shopping?.length || 0), 0),
+            checklistCount:   state.trips.reduce((acc, t) => acc + (t.checklist?.length || 0), 0),
+            updatedAt:        Date.now()
         };
-
-        // 🚀 5. 調用發動機：推播全量 Payload 與履歷
-        // 💡 修改點：傳送 fullDataPayload 取代原本單一的 trips
         const result = await syncEngine.pushToFirebase(state.userId, fullDataPayload, statsSnapshot);
-        
         if (result.status === 'SUCCESS') {
             console.log("✅ [App] Firebase 全境封裝成功 | 履歷已固化");
-            
-            // 🚀 6. 物理指紋同步
             const lastSyncTs = statsSnapshot.updatedAt;
             state.lastLocalEdit = lastSyncTs;
-            state.cloudStats = statsSnapshot; 
-
-            // 雙軌持久化，封殺數據漂移
+            state.cloudStats = statsSnapshot;
             localStorage.setItem('tf_last_local_edit', lastSyncTs);
             localStorage.setItem('tf_cloud_snapshot', JSON.stringify(statsSnapshot));
-
-            uiManager.showToast('✅', '雲端全磁區對焦完畢');
-            
-            // 視圖熱重連
+            uiManager.showToast('✅', '資料已成功備份至雲端');
             this.navigateTo('backup');
         } else {
-            uiManager.showToast('❌', `同步斷路: ${result.message}`);
+            uiManager.showToast('❌', `同步失敗：${result.message}`);
         }
     } catch (err) {
         console.error("❌ [App] Firebase 封裝失敗:", err);
-        uiManager.showToast('💥', '系統物理崩潰，請檢查網路');
+        uiManager.showToast('💥', '系統異常，請檢查網路連線');
     }
 },
 
+/** 🛡️ [Restore-Guard] 還原二次確認控制器 */
+_showRestoreConfirm() {
+    const zone = document.getElementById('restore-confirm-zone');
+    if (zone) zone.classList.remove('hidden');
+},
+
+_hideRestoreConfirm() {
+    const zone = document.getElementById('restore-confirm-zone');
+    if (zone) zone.classList.add('hidden');
+},
 
 async triggerDriveBackup() {
     console.log("📁 [App] 啟動 Drive 物理封存...");
@@ -5114,28 +5802,23 @@ async triggerDriveBackup() {
 
 /** 🔄 [App] 雲端真值回流對焦 (V2026.ULTRA 強力熔斷版) */
 async syncFromCloud(silent = false) {
-    // 🛡️ 1. 物理攔截器：身份與路網主權預檢
     if (!state.userId || state.userId === 'guest_sector') {
         if (!silent) uiManager.showToast('🔒', '請先登入以提領雲端存檔');
         return false;
     }
 
     if (!navigator.onLine) {
-        if (!silent) uiManager.showToast('📶', '通訊磁區斷路，請檢查網路連線');
+        if (!silent) uiManager.showToast('📶', '網路連線中斷，請檢查後再試');
         return false;
     }
 
-    // 🚀 2. 點火：啟動進度條並強制提升層級
     if (!silent) {
-        uiManager.showProgressModal('雲端磁區回流', '正在初始化戰術路網...');
+        uiManager.showProgressModal('從雲端還原', '正在連線至雲端...');
     }
 
     try {
-        // STEP 1: 快照提領 (導入 RPC 爆裂熔斷協定) (10-35%)
-        if (!silent) uiManager.updateProgress(10, '正在嘗試穿透通訊屏蔽...');
+        if (!silent) uiManager.updateProgress(10, '正在讀取雲端資料...');
 
-        // 💡 職人診斷：針對日誌中 RPC 'Listen' stream 爆裂，建立 20 秒絕對冷卻門檻
-        // 封殺 Firebase SDK 內部超過 10 次的無效重試 (handleSendFailure_)
         const result = await Promise.race([
             syncEngine.fetchFromFirebase(state.userId),
             new Promise((_, reject) => setTimeout(() => reject(new Error("RPC_STREAM_BURST")), 20000))
@@ -5146,55 +5829,45 @@ async syncFromCloud(silent = false) {
             const cloudMetadata = result.metadata || {};
             const cloudUpdatedAt = cloudMetadata.lastSync || cloudMetadata.updatedAt || Date.now();
 
-            if (!silent) uiManager.updateProgress(35, '快照擷取完畢，執行物理洗滌...');
+            if (!silent) uiManager.updateProgress(35, '資料讀取完畢，清空本地磁區...');
 
-            // STEP 2: 物理洗滌與歸零 (45%)
             await dbManager.clear();
-            if (!silent) uiManager.updateProgress(45, '本地磁區已排空，準備重組...');
+            if (!silent) uiManager.updateProgress(45, '本地磁區已清空，開始寫入...');
 
-            // STEP 3: 分流穩壓寫入 (55-90%)
-            // A. 行程磁軌注入
             if (remoteData.trips && Array.isArray(remoteData.trips)) {
-                if (!silent) uiManager.updateProgress(55, '正在注入行程數據軌道...');
+                if (!silent) uiManager.updateProgress(55, '正在還原行程資料...');
                 await dbManager.saveAllTrips(remoteData.trips);
             }
 
-            // B & C. 靈感與語料鏈式固化 (分段回報進度)
             const backlogItems = Array.isArray(remoteData.backlogs) ? remoteData.backlogs : [];
             const transItems = remoteData.translations || remoteData.translationVault || [];
 
-            if (!silent) uiManager.updateProgress(70, '正在精煉語法與靈感燃料...');
+            if (!silent) uiManager.updateProgress(70, '正在還原靈感清單與翻譯語料...');
             
-            // 🚀 職人加固：改用單步 await 緩解 IndexedDB 總線壓力，防止 I/O 競爭崩潰
             for (const item of backlogItems) {
                 if (item?.id) await dbManager.put(dbManager.STORES.BACKLOG, item);
             }
-            if (!silent) uiManager.updateProgress(80, '靈感磁區對焦完畢...');
+            if (!silent) uiManager.updateProgress(80, '靈感清單還原完畢...');
 
             for (const item of transItems) {
                 if (item?.id) await dbManager.put(dbManager.STORES.TRANS_VAULT, item);
             }
             
-            if (!silent) uiManager.updateProgress(90, '數據封裝完成，同步配置指紋...');
+            if (!silent) uiManager.updateProgress(90, '同步系統設定...');
 
-            // D. 配置對焦
             if (remoteData.config) {
                 const cfg = remoteData.config;
                 if (cfg.theme) localStorage.setItem('tf_theme_key', cfg.theme);
                 if (cfg.voice) localStorage.setItem('tf_voice_id', cfg.voice);
             }
 
-            // 🚀 4. 持久化指針固化 (100%)
             state.trips = Array.isArray(remoteData.trips) ? remoteData.trips : [];
             state.lastLocalEdit = cloudUpdatedAt;
             localStorage.setItem('tf_last_local_edit', state.lastLocalEdit);
             localStorage.setItem('tf_cloud_snapshot', JSON.stringify(cloudMetadata));
 
-            if (!silent) {
-                uiManager.updateProgress(100, '回流成功！重啟路網引擎...');
-            }
+            if (!silent) uiManager.updateProgress(100, '還原成功，重新載入中...');
 
-            // 🚀 5. 視圖重連：延遲一秒執行最高層級刷新
             setTimeout(() => {
                 if (!silent) uiManager.hideProgressModal();
                 location.reload();
@@ -5208,20 +5881,18 @@ async syncFromCloud(silent = false) {
     } catch (err) {
         console.error("❌ [App-Sync-Collapse] 物理還原崩潰:", err);
         
-        // 🚀 6. 異常回收總線：確保介面不卡死
         if (!silent) {
             uiManager.hideProgressModal();
             
-            // 職人級分流提示：精確捕捉日誌中的 RPC 爆裂與超時
             let errorIcon = '💥';
-            let errorMsg = '數據總線中斷：' + (err.message || '未知錯誤');
+            let errorMsg = '還原失敗：' + (err.message || '未知錯誤');
 
             if (err.message === "RPC_STREAM_BURST" || err.message === "NETWORK_TIMEOUT") {
                 errorIcon = '📶';
-                errorMsg = '通訊流爆裂 (DPI 攔截)，請切換路網重試';
+                errorMsg = '連線逾時，請切換網路後再試';
             } else if (err.message.includes('offline')) {
                 errorIcon = '📶';
-                errorMsg = '通訊磁區斷路，請檢查連線狀態';
+                errorMsg = '網路連線中斷，請檢查後再試';
             }
             
             uiManager.showToast(errorIcon, errorMsg);
@@ -5331,76 +6002,656 @@ checkSyncHealth() {
 },
 
 
-/** 🚀 [Shared-Zone] 行程共享投射：物理座標生成與密鑰固化 */
-async deployToSharedZone() {
-    // 1. 🚀 物理採集：從 UI 提取參數
-    const tripId = document.getElementById('share-trip-id')?.value;
-    const passcode = document.getElementById('share-passcode')?.value.trim();
-    const resultArea = document.getElementById('shared-result-area');
-
-    // 🛡️ 數據防禦
-    if (!tripId) return uiManager.showToast('⚠️', '未定位目標行程');
-    if (!passcode || passcode.length < 4) {
-        uiManager.showToast('🔑', '密鑰長度不足 (需 4 位數)');
-        return;
-    }
-
-    const trip = state.trips.find(t => t.id === tripId);
-    if (!trip) return uiManager.showToast('❌', '行程燃料遺失');
-
-    console.log(`🔥 [Shared-Projection] 準備投射行程: ${trip.name} | 密鑰指紋對焦中...`);
-    uiManager.showToast('🚀', '正在啟動物理座標投射...');
+/** 🚀 [Export-Filter] 開啟數據封裝選擇器 (V2026.ULTRA 實體全索引導通版) */
+async openExportFilterModal() {
+    console.log("📡 [Filter-Ignition] 啟動全路網數據主權回收...");
+    uiManager.showToast('📡', '正在回收數據指紋...');
 
     try {
-        // 🚀 2. 調用同步發動機執行雲端佈署
-        const result = await syncEngine.deployToSharedZone(trip, passcode);
+        const tripId = document.getElementById('share-trip-id')?.value;
+        const currentTrip = state.trips.find(t => String(t.id) === String(tripId));
 
-        if (result.status === 'SUCCESS' && result.shareId) {
-            // 3. 🏁 投射成功：物理反饋
-            if (navigator.vibrate) navigator.vibrate([15, 30, 15]);
-            uiManager.showToast('✅', '投射成功，座標已固化');
+        // 🚀 1. 執行基礎磁區導通 (靈感、翻譯、特訓)
+        if (window.backlogManager) await window.backlogManager.loadAll();
+        const allTrans = await window.dbManager.getAll('translationVault') || [];
+        window.state.allTranslations = allTrans;
+        window.state.contextualTrans = allTrans.filter(i => i.type === 'contextual' || (i.q && i.a && !i.edu_vocab));
+        window.state.realtimeHistory = allTrans.filter(i => i.type === 'article_package' || i.edu_vocab);
+        window.state.srsMetadata = await window.dbManager.getAll('srsMetadata') || [];
 
-            // 🚀 4. 視圖噴發：動態渲染結果卡片
-            if (resultArea) {
-                resultArea.classList.remove('hidden');
-                resultArea.innerHTML = `
-                    <div class="mt-6 p-6 bg-emerald-50 rounded-[2rem] border-2 border-emerald-100 animate-slide-up relative overflow-hidden">
-                        <div class="absolute -right-2 -top-2 opacity-10 text-6xl italic font-black text-emerald-600">LINK</div>
-                        
-                        <p class="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-4">Projected Shared ID</p>
-                        
-                        <div class="flex items-center justify-between gap-4 mb-4">
-                            <div class="bg-white px-6 py-4 rounded-2xl border border-emerald-200 shadow-sm flex-1">
-                                <span class="text-2xl font-black text-slate-800 tracking-[0.3em] font-mono">${result.shareId}</span>
-                            </div>
-                            <button onclick="App.copyShareId('${result.shareId}')" 
-                                    class="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">
-                                <i class="fa-solid fa-copy text-xl"></i>
-                            </button>
-                        </div>
-                        
-                        <div class="flex items-start gap-2 px-1">
-                            <span class="text-[10px] text-emerald-700 font-bold">※ 夥伴輸入此 8 位座標與密碼即可同步您的航線。</span>
-                        </div>
-                    </div>
-                `;
-                // 物理對焦
-                resultArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-            
-            // 5. 數據歸檔：可選，記錄在本地以便日後查詢已分享的清單
-            const shareHistory = JSON.parse(localStorage.getItem('tf_share_history') || '[]');
-            shareHistory.unshift({ id: result.shareId, tripName: trip.name, deployedAt: Date.now() });
-            localStorage.setItem('tf_share_history', JSON.stringify(shareHistory.slice(0, 10)));
-
-        } else {
-            uiManager.showToast('❌', '投射斷路：' + (result.message || '雲端拒絕請求'));
+        // 🚀 2. 裝備零件 (Checklist) 物理回收 - ⚡ 終極修正點
+        // 💡 職人診斷：穿透所有可能的 V5 物理槽位，並執行強制 ID 匹配
+        const possibleStores = ['itineraryItems', 'checklistItems', 'itinerary_items'];
+        let packFuel = [];
+        
+        for (const store of possibleStores) {
+            try {
+                const raw = await window.dbManager.getAll(store);
+                if (raw && raw.length > 0) {
+                    const matches = raw.filter(item => String(item.tripId) === String(tripId));
+                    if (matches.length > 0) {
+                        packFuel = matches;
+                        console.log(`✅ [DB-Match] 在磁區 [${store}] 尋獲 ${matches.length} 筆零件`);
+                        break;
+                    }
+                }
+            } catch (e) { continue; }
         }
+
+        // 🚀 3. 數據回填：若 DB 沒撈到，最後嘗試從 trip 物件的隱藏屬性萃取
+        if (packFuel.length === 0 && currentTrip) {
+            packFuel = currentTrip.checklistItems || currentTrip.checklist || currentTrip.items || [];
+        }
+
+        // 🚀 4. 狀態固化：強制注入全域狀態，確保 viewEngine 與洗滌器有燃料可用
+        window.state.checklistItems = packFuel;
+        if (currentTrip) currentTrip.checklistItems = packFuel;
+
+        console.log(`🏁 [Sector-Report-Final] 
+                    - 靈感: ${window.state.backlogs?.length || 0} 筆
+                    - 特訓: ${window.state.srsMetadata.length} 筆
+                    - 清單: ${packFuel.length} 筆 (物理回收 ✅)`);
+
+        // 5. 噴發模態框 (此時 viewEngine 渲染 case 'packing' 將精確對焦)
+        const content = viewEngine._renderExportFilterContent();
+        const actions = `
+            <button onclick="App.modalRemove('export-filter-modal')" class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">取消</button>
+            <button onclick="App.saveExportFilter()" class="flex-[2] py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">確認封裝配置</button>
+        `;
+
+        this.modalCreate('export-filter-modal', '📦 配置數據封裝內容', content, actions);
+        if (navigator.vibrate) navigator.vibrate(10);
+        
     } catch (err) {
-        console.error("❌ [Shared-Projection-Fatal]:", err);
-        uiManager.showToast('💥', '物理崩潰，請檢查數據路網');
+        console.error("❌ [Filter-Ignition-Collapse]:", err);
+        uiManager.showToast('🚨', '數據導通異常');
     }
 },
+
+/** 💾 [Export-Filter] 固化過濾設定並更新 UI 狀態 */
+saveExportFilter() {
+    const checks = document.querySelectorAll('.export-module-check');
+    const whitelist = Array.from(checks)
+        .filter(input => input.checked)
+        .map(input => input.value);
+
+    // 1. 持久化存儲白名單
+    localStorage.setItem('tf_export_whitelist', JSON.stringify(whitelist));
+
+    // 2. 視覺回饋：更新 Step 2 按鈕上的狀態文字
+    const statusEl = document.getElementById('export-filter-status');
+    if (statusEl) {
+        const total = checks.length;
+        const selected = whitelist.length;
+        statusEl.innerText = (selected === total) ? '預設：全量匯出' : `已選取 ${selected} / ${total} 項`;
+        
+        // 💡 職人視覺：若非全選，改變標籤顏色提醒
+        statusEl.className = (selected === total) 
+            ? 'text-[9px] font-black theme-text-pink bg-pink-50 px-2.5 py-1 rounded-md border border-pink-100/50'
+            : 'text-[9px] font-black text-amber-500 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-100/50';
+    }
+
+    // 3. 撤收模態框
+    this.modalRemove('export-filter-modal');
+    uiManager.showToast('✅', '封裝配置已更新');
+    
+    console.log("🧬 [Filter-Sync] 數據白名單已更新:", whitelist);
+},
+
+/** 🚀 [UX-Bridge] 切換匯出模組的 UI 狀態與子清單 */
+toggleExportSubList(modId, isChecked) {
+    const wrapper = document.getElementById(`wrapper-${modId}`);
+    const subList = document.getElementById(`sub-list-${modId}`);
+    const labelTitle = wrapper?.querySelector('span.font-black');
+    const labelSub = wrapper?.querySelector('p.font-bold');
+    const iconBox = wrapper?.querySelector('.transition-all');
+
+    if (isChecked) {
+        // 🚀 導通：點亮主題色
+        wrapper.className = "export-module-wrapper border-2 rounded-[2rem] transition-all duration-300 overflow-hidden border-pink-200 bg-white shadow-md shadow-pink-50";
+        subList.classList.remove('hidden');
+        labelTitle.className = "text-[14px] font-black text-slate-800";
+        labelSub.className = "text-[9px] font-bold uppercase tracking-widest theme-text-pink";
+        iconBox.classList.remove('grayscale');
+        iconBox.classList.add('bg-pink-50');
+    } else {
+        // 🚀 斷路：回歸淺灰色
+        wrapper.className = "export-module-wrapper border-2 rounded-[2rem] transition-all duration-300 overflow-hidden border-slate-50 bg-slate-50/50";
+        subList.classList.add('hidden');
+        labelTitle.className = "text-[14px] font-black text-slate-400";
+        labelSub.className = "text-[9px] font-bold uppercase tracking-widest text-slate-300";
+        iconBox.classList.add('grayscale');
+        iconBox.classList.remove('bg-pink-50');
+    }
+
+    if (navigator.vibrate) navigator.vibrate(5);
+},
+
+
+// 🤖 AI 規劃器：開啟設定模態框
+openAIPlannerSettings() {
+    const selectedIds = Array.from(window.backlogManager?._stagedSelection || []);
+    if (selectedIds.length < 2) return uiManager.showToast('⚠️', '請至少選取 2 張靈感小卡');
+
+    const trip = state.trips.find(t => t.id === state.activeTripId);
+    if (!trip) return uiManager.showToast('⚠️', '請先開啟一個行程');
+
+    const allBacklogs = window.backlogManager?.items || [];
+    const selectedCards = selectedIds.map(id => allBacklogs.find(b => String(b.id) === String(id))).filter(Boolean);
+
+    const content = viewEngine._renderAIPlannerSettings(selectedCards, trip);
+    const actions = `
+        <button onclick="App.modalRemove('ai-planner-modal')"
+                class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">取消</button>
+        <button onclick="App.executeAIPlanner()"
+                class="flex-[2] py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
+            <i class="ti ti-copy" style="font-size:14px;"></i> 複製規劃指令
+        </button>`;
+    App.modalCreate('ai-planner-modal', 'AI 行程規劃設定', content, actions);
+
+    // 預設選取飯店起訖（若有飯店）
+    const hasHotel = trip.hotels?.[0];
+    App._plannerState = {
+        depType: hasHotel ? 'hotel' : 'ai',
+        daysMode: 'full',
+        selectedCards,
+        trip
+    };
+},
+
+// 🤖 AI 規劃器：執行複製 prompt
+async executeAIPlanner() {
+    const ps = App._plannerState;
+    if (!ps) return;
+
+    const cardLimit = parseInt(document.getElementById('planner-card-limit')?.value || '4');
+    const pace = document.getElementById('planner-pace')?.value || '2';
+    const customDep = document.getElementById('planner-dep-text')?.value?.trim() || '';
+
+    const settings = {
+        depType: ps.depType,
+        customDep,
+        cardLimit,
+        daysMode: ps.daysMode,
+        pace
+    };
+
+    const prompt = window.backlogManager._generateDayPlannerPrompt(ps.trip, ps.selectedCards, settings);
+    await navigator.clipboard.writeText(prompt);
+    uiManager.showToast('✨', `規劃指令已複製（${ps.selectedCards.length} 張小卡）`);
+
+    // 切換到貼入 JSON 的畫面
+    const pasteContent = `
+        <p style="font-size: 11px; color: var(--color-text-tertiary); margin: 0 0 10px; line-height: 1.6;">
+            指令已複製，請貼到 AI 取得規劃結果後，將回傳的 JSON 貼入下方。
+        </p>
+        <textarea id="ai-planner-json" rows="8"
+                  style="width: 100%; padding: 10px 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); font-size: 12px; font-family: monospace; resize: none; outline: none; box-sizing: border-box;"
+                  placeholder='{"days": [...], "unscheduled": [...]}'>
+        </textarea>`;
+    const pasteActions = `
+        <button onclick="App.modalRemove('ai-planner-modal')"
+                class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">取消</button>
+        <button onclick="App.parseAIPlannerResult()"
+                class="flex-[2] py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">
+            解析並預覽
+        </button>`;
+
+    App.modalCreate('ai-planner-modal', 'AI 行程規劃 · 貼入結果', pasteContent, pasteActions);
+},
+
+// 🤖 AI 規劃器：解析結果並顯示預覽
+parseAIPlannerResult() {
+    const raw = document.getElementById('ai-planner-json')?.value?.trim();
+    if (!raw) return uiManager.showToast('⚠️', '請先貼入 AI 回傳的 JSON');
+    try {
+        const sanitized = raw.replace(/```json/g, '').replace(/```/g, '').trim();
+        const result = JSON.parse(sanitized);
+        const ps = App._plannerState;
+
+        const previewContent = viewEngine._renderAIPlannerPreview(result, ps.trip, ps.selectedCards);
+        const previewActions = `
+            <button onclick="App.modalRemove('ai-planner-modal')"
+                    class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">關閉</button>
+            <button onclick="App._confirmAndSaveAIPlan()"
+                    class="flex-[2] py-4 bg-slate-800 text-white rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">
+                確認並儲存草稿
+            </button>`;
+
+        // 🚀 暫存 result 供確認後使用
+        App._plannerState.pendingResult = result;
+
+        App.modalCreate('ai-planner-modal', 'AI 規劃預覽', previewContent, previewActions);
+    } catch (e) {
+        uiManager.showToast('⚠️', 'JSON 格式錯誤，請確認後再試');
+    }
+},
+
+// 🤖 AI 規劃器：確認並儲存草稿
+async _confirmAndSaveAIPlan() {
+    const ps = App._plannerState;
+    if (!ps?.pendingResult || !ps?.trip) return;
+
+    // 🚀 資料遷移：舊版單一草稿 → 新版陣列
+    if (!Array.isArray(ps.trip.aiPlannerDrafts)) {
+        ps.trip.aiPlannerDrafts = ps.trip.aiPlannerDraft
+            ? [ps.trip.aiPlannerDraft]
+            : [];
+        delete ps.trip.aiPlannerDraft;
+    }
+
+    // 🚀 自動產生草稿標題（從 days 城市推導）
+    const cities = [...new Set(ps.selectedCards.map(c => c.city).filter(Boolean))];
+    const days = ps.pendingResult.days?.length || 0;
+    const title = cities.length > 0
+        ? `${cities.slice(0, 2).join('・')} ${days} 天`
+        : `AI 草稿 ${days} 天`;
+
+    const newDraft = {
+        id: `draft_${Date.now()}`,
+        createdAt: Date.now(),
+        title,
+        selectedCards: ps.selectedCards.map(c => ({
+            id: c.id, name: c.name, category: c.category, city: c.city
+        })),
+        result: ps.pendingResult
+    };
+
+    ps.trip.aiPlannerDrafts.push(newDraft);
+
+    await App.persistState(ps.trip);
+
+    App.modalRemove('ai-planner-modal');
+    uiManager.showToast('✅', `草稿「${title}」已儲存`);
+
+    const idx = state.trips.findIndex(t => t.id === ps.trip.id);
+    if (idx !== -1) state.trips[idx] = ps.trip;
+},
+
+// 🤖 AI 草稿：開啟草稿列表
+openAIPlannerDraft() {
+    const trip = state.trips?.find(t => t.id === state.activeTripId);
+    if (!trip) return;
+
+    // 🚀 遷移舊版單一草稿
+    if (trip.aiPlannerDraft && !Array.isArray(trip.aiPlannerDrafts)) {
+        const legacy = trip.aiPlannerDraft;
+        if (!legacy.id) legacy.id = `draft_${legacy.createdAt || Date.now()}`;
+        if (!legacy.title) {
+            const cities = [...new Set((legacy.selectedCards || []).map(c => c.city).filter(Boolean))];
+            const days = legacy.result?.days?.length || 0;
+            legacy.title = cities.length > 0 ? `${cities.slice(0, 2).join('・')} ${days} 天` : `AI 草稿 ${days} 天`;
+        }
+        trip.aiPlannerDrafts = [legacy];
+        delete trip.aiPlannerDraft;
+        App.persistState(trip);
+    }
+
+    // 🚀 過濾掉沒有 id 或 result 的壞資料
+    if (Array.isArray(trip.aiPlannerDrafts)) {
+        trip.aiPlannerDrafts = trip.aiPlannerDrafts.filter(d => d.id && d.result);
+        // 補上缺失的 id 或 title
+        trip.aiPlannerDrafts.forEach(d => {
+            if (!d.id) d.id = `draft_${d.createdAt || Date.now()}`;
+            if (!d.title) {
+                const cities = [...new Set((d.selectedCards || []).map(c => c.city).filter(Boolean))];
+                const days = d.result?.days?.length || 0;
+                d.title = cities.length > 0 ? `${cities.slice(0, 2).join('・')} ${days} 天` : `AI 草稿 ${days} 天`;
+            }
+        });
+    }
+
+    const drafts = trip.aiPlannerDrafts || [];
+
+    if (drafts.length === 0) {
+        return uiManager.showToast('⚠️', '尚無草稿，請先選取小卡並 AI 規劃');
+    }
+
+    const content = viewEngine._renderAIPlannerDraftList(drafts);
+    const actions = `
+        <button onclick="App.modalRemove('ai-draft-modal')"
+                class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">
+            關閉
+        </button>`;
+
+    App.modalCreate('ai-draft-modal', `草稿行程 · ${drafts.length} 份`, content, actions);
+},
+
+
+// 🤖 AI 草稿：開啟單一草稿預覽
+openAIPlannerDraftDetail(draftId) {
+    const trip = state.trips?.find(t => t.id === state.activeTripId);
+    const draft = trip?.aiPlannerDrafts?.find(d => d.id === draftId);
+    if (!draft) return;
+
+    const timeStr = (() => {
+        const diff = Date.now() - draft.createdAt;
+        const mins = Math.floor(diff / 60000);
+        const hrs = Math.floor(diff / 3600000);
+        if (mins < 1) return '剛剛';
+        if (mins < 60) return `${mins} 分鐘前`;
+        if (hrs < 24) return `${hrs} 小時前`;
+        return `${Math.floor(hrs / 24)} 天前`;
+    })();
+
+    const content = viewEngine._renderAIPlannerPreview(draft.result, trip, draft.selectedCards, draft.id);
+    const actions = `
+        <button onclick="App._deleteAIPlannerDraft('${draftId}')"
+                class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">
+            刪除草稿
+        </button>
+        <button onclick="App.modalRemove('ai-draft-detail-modal')"
+                class="flex-[2] py-4 bg-slate-800 text-white rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">
+            關閉
+        </button>`;
+
+    App.modalCreate('ai-draft-detail-modal', `${draft.title} · ${timeStr}`, content, actions);
+},
+
+// 🤖 AI 草稿：刪除單一草稿
+async _deleteAIPlannerDraft(draftId) {
+    const trip = state.trips?.find(t => t.id === state.activeTripId);
+    if (!trip?.aiPlannerDrafts) return;
+
+    const draft = trip.aiPlannerDrafts.find(d => d.id === draftId);
+    const title = draft?.title || '此草稿';
+
+    trip.aiPlannerDrafts = trip.aiPlannerDrafts.filter(d => d.id !== draftId);
+    await App.persistState(trip);
+
+    App.modalRemove('ai-draft-detail-modal');
+    App.modalRemove('ai-draft-modal');
+    uiManager.showToast('✅', `「${title}」已刪除`);
+
+    // 🚀 若還有其他草稿，重新開啟列表
+    if (trip.aiPlannerDrafts.length > 0) {
+        setTimeout(() => App.openAIPlannerDraft(), 300);
+    }
+},
+
+// 🤖 AI 規劃器：狀態控制
+_setPlannerDep(type) {
+    App._plannerState = App._plannerState || {};
+    App._plannerState.depType = type;
+    document.getElementById('dep-custom-input').style.display = type === 'custom' ? 'block' : 'none';
+    ['hotel', 'ai', 'custom'].forEach(t => {
+        const el = document.getElementById(`dep-${t}`);
+        if (!el) return;
+        const radio = el.querySelector('.dep-radio');
+        const isActive = t === type;
+        el.style.border = isActive ? '0.5px solid #F4C0D1' : '0.5px solid var(--color-border-tertiary)';
+        el.style.background = isActive ? '#FBEAF0' : 'var(--color-background-secondary)';
+        if (radio) {
+            radio.style.background = isActive ? '#D4537E' : 'var(--color-background-primary)';
+            radio.innerHTML = isActive ? '<i class="ti ti-check" style="font-size:11px; color:white;"></i>' : '';
+            radio.style.border = isActive ? 'none' : '0.5px solid var(--color-border-secondary)';
+        }
+    });
+},
+
+_setPlannerDays(mode) {
+    App._plannerState = App._plannerState || {};
+    App._plannerState.daysMode = mode;
+    ['full', 'hotel', 'effective'].forEach(m => {
+        const el = document.getElementById(`days-${m}`);
+        if (!el) return;
+        const radio = el.querySelector('.days-radio');
+        const isActive = m === mode;
+        el.style.border = isActive ? '0.5px solid #F4C0D1' : '0.5px solid var(--color-border-tertiary)';
+        el.style.background = isActive ? '#FBEAF0' : 'var(--color-background-secondary)';
+        if (radio) {
+            radio.style.background = isActive ? '#D4537E' : 'var(--color-background-primary)';
+            radio.innerHTML = isActive ? '<i class="ti ti-check" style="font-size:11px; color:white;"></i>' : '';
+            radio.style.border = isActive ? 'none' : '0.5px solid var(--color-border-secondary)';
+        }
+    });
+},
+
+_updatePlannerPace(val) {
+    const labels = { '1': '寬鬆', '2': '舒適', '3': '緊湊' };
+    const descs = {
+        '1': '每天安排 2-3 個景點，留有大量自由時間，悠閒感受當地氛圍。',
+        '2': '每天安排 3-4 個景點，景點間保留足夠移動時間與用餐休息。',
+        '3': '每天安排 4-5 個景點，行程緊湊充實，適合想跑景點的旅人。'
+    };
+    const labelEl = document.getElementById('planner-pace-label');
+    const descEl = document.getElementById('planner-pace-desc');
+    if (labelEl) labelEl.textContent = labels[val];
+    if (descEl) descEl.textContent = descs[val];
+},
+
+/**
+ * 🛰️ [Shared-Zone] 行程共享投射主控 (V2026.ULTRA 物理磁區直連版)
+ */
+async deployToSharedZone() {
+    console.group("🚀 [Deploy-Ignition] 啟動全量數據基因封裝...");
+    
+    try {
+        const tripId = document.getElementById('share-trip-id')?.value;
+        const passcode = document.getElementById('share-passcode')?.value.trim();
+        
+        if (!tripId) return uiManager.showToast('⚠️', '未定位目標行程');
+        if (!passcode || passcode.length < 4) return uiManager.showToast('🔑', '密鑰需 4 位數');
+
+        const originalTrip = state.trips.find(t => String(t.id) === String(tripId));
+        if (!originalTrip) return uiManager.showToast('❌', '行程燃料遺失');
+
+        // 🚀 1. 採集白名單
+        const moduleWhitelist = JSON.parse(localStorage.getItem('tf_export_whitelist')) || [
+            'flights', 'hotels', 'itinerary', 'packing', 'realtime'
+        ];
+        
+        uiManager.showToast('🚀', '執行原子洗滌與物理磁區徵調...');
+
+        // 🚀 2. 物理磁區預檢 (封殺 RAM 真空陷阱)
+        const allVaultData = await dbManager.getAll('translationVault') || [];
+        
+        // 🚀 [修正] 靈感小卡直接從 IndexedDB 提領，封殺記憶體狀態不同步問題
+        const allBacklogs = await dbManager.getAll(dbManager.STORES.BACKLOG) || [];
+
+        // 🚀 [相容性過渡協定] 有 tripId 的精確比對，舊資料無 tripId 的也放行
+        const targetedRealtime = allVaultData.filter(i => 
+            (String(i.tripId) === String(originalTrip.id) || !i.tripId) &&
+            (i.type === 'article_package' || !i.type)
+        );
+        const targetedContext = allVaultData.filter(i => 
+            (String(i.tripId) === String(originalTrip.id) || !i.tripId) &&
+            i.type === 'contextual'
+        );
+
+        // 🚀 3. 構建 Payload
+        const sharedPayload = {
+            id: originalTrip.id,
+            name: originalTrip.name,
+            city: originalTrip.city,
+            createdAt: originalTrip.createdAt,
+            updatedAt: Date.now(),
+            
+            days: (moduleWhitelist.includes('itinerary')) ? (originalTrip.days || []) : [],
+            transport: (moduleWhitelist.includes('flights')) ? (originalTrip.transport || []) : [],
+            hotels: (moduleWhitelist.includes('hotels')) ? (originalTrip.hotels || []) : [],
+            
+            checklistItems: (moduleWhitelist.includes('packing')) ? 
+                (window.state.checklistItems || originalTrip.checklistItems || []).map(({ tripId, timestamp, ...p }) => ({
+                    ...p,
+                    tripId: originalTrip.id 
+                })) : [],
+                
+            translations: {
+                lang: localStorage.getItem('tf_trans_lang') || 'JP',
+                realtime: (moduleWhitelist.includes('realtime')) ? 
+                    targetedRealtime.map((r, idx) => ({
+                        ...r,
+                        id: r.id || `RT_${Date.now()}_${idx}`,
+                        tripId: originalTrip.id,
+                        type: 'article_package'
+                    })) : [],
+                contextual: (moduleWhitelist.includes('contextual')) ? 
+                    targetedContext.map((c, idx) => ({
+                        ...c,
+                        id: c.id || `CT_${Date.now()}_${idx}`,
+                        tripId: originalTrip.id
+                    })) : []
+            },
+            
+            srs: (moduleWhitelist.includes('training')) ? 
+                (window.state.srsMetadata || []).map(({ nextReview, ...s }) => s) : [],
+            
+            emergencyVault: (moduleWhitelist.includes('emergency')) ? (originalTrip.emergencyVault || []) : [],
+            shopping: (moduleWhitelist.includes('shopping')) ? (originalTrip.shopping || []) : [],
+            // 🚀 [修正] 從 IndexedDB 直接提領，不依賴記憶體狀態
+            backlogs: (moduleWhitelist.includes('backlog')) ? allBacklogs : []
+        };
+
+        // 🔎 4. 終極導通判定
+        const hasFuel = [
+            sharedPayload.days.length,
+            sharedPayload.translations.realtime.length,
+            sharedPayload.translations.contextual.length,
+            sharedPayload.checklistItems.length,
+            sharedPayload.backlogs.length,
+            sharedPayload.srs.length,
+            sharedPayload.emergencyVault.length,
+            sharedPayload.shopping.length
+        ].some(count => count > 0);
+
+        if (!hasFuel) return uiManager.showToast('🚨', '所選模組內無有效數據');
+
+        // 🚀 5. 序列化負載監控
+        const serializedFuel = JSON.stringify(sharedPayload);
+        console.log("📦 [Payload-Ready] 封裝完畢：", {
+            "目標行程": sharedPayload.name,
+            "即時翻譯語料": targetedRealtime.length,
+            "情境翻譯語料": targetedContext.length,
+            "特訓指紋": sharedPayload.srs.length,
+            "緊急清單": sharedPayload.emergencyVault.length,
+            "購物清單": sharedPayload.shopping.length,
+            "靈感小卡": sharedPayload.backlogs.length,
+            "總負載量": `${(serializedFuel.length / 1024).toFixed(2)} KB`
+        });
+
+        // 6. 🔥 點火投射
+        uiManager.showToast('📡', '正在投射至雲端...');
+        const result = await syncEngine.deployToSharedZone(sharedPayload, passcode);
+
+        if (result.status === 'SUCCESS' && result.shareId) {
+            this._handleProjectionSuccess(result, originalTrip.name);
+            if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
+            console.log(`✅ [Shared-Success] 座標 ${result.shareId} 燃料已廣播`);
+        } else {
+            throw new Error(result.message || "雲端導通失敗");
+        }
+
+    } catch (err) {
+        console.error("❌ [Shared-Projection-Fatal]:", err);
+        uiManager.showToast('💥', '數據對焦異常：' + err.message);
+    }
+    console.groupEnd();
+},
+
+/** 🧪 [Core-Engine] 數據洗滌發動機 (V2026.ULTRA 核心加固版) */
+async _sanitizeSharedPayload(trip, externalWhitelist = null, moduleWhitelist = null) {
+    console.group("🛰️ [Sanitization-Dispatcher] 啟動模組化洗滌程序...");
+
+    // 🚀 1. 物理參數採集：優先使用傳入的白名單，否則回退至磁區快照
+    const whitelist = moduleWhitelist || JSON.parse(localStorage.getItem('tf_export_whitelist')) || [
+        'flights', 'hotels', 'itinerary', 'packing', 'realtime', 
+        'training', 'contextual', 'shopping', 'emergency', 'backlog'
+    ];
+
+    // 🚀 2. 子項指紋感應
+    const subWhitelist = externalWhitelist || [];
+    const hasSubChecks = subWhitelist.length > 0;
+
+    console.log(`📡 [Dispatcher-Focus] 模組白名單: ${whitelist.length} | 子項指紋數: ${subWhitelist.length}`);
+
+    // 🚀 3. 初始化 Payload：執行深度克隆
+    let payload = JSON.parse(JSON.stringify(trip));
+
+    // 🚀 4. 模組處理器對應表
+    const processors = {
+        'flights': '_washFlights', 'hotels': '_washHotels',
+        'itinerary': '_washItinerary', 'packing': '_washPacking',
+        'realtime': '_washRealtime', 'training': '_washTraining',
+        'contextual': '_washContextual', 'shopping': '_washShopping',
+        'emergency': '_washEmergency', 'backlog': '_washBacklog'
+    };
+
+    // 🚀 5. 執行循環洗滌
+    for (const [modId, funcName] of Object.entries(processors)) {
+        try {
+            if (!whitelist.includes(modId)) {
+                this._terminateModule(payload, modId);
+                continue;
+            }
+
+            // 🚀 核心焊接 A：行程 (Itinerary) 主權保護
+            // 💡 職人診斷：若勾選了模組但子項指紋為空（例如未展開選單），則強制全量導通，防止 days 為空導致接收端失效
+            if (modId === 'itinerary' && !subWhitelist.some(id => id.startsWith('day-'))) {
+                payload.days = trip.days; 
+                console.log("✅ [Core-Force] 行程核心軌道強制導通 (全量天數)");
+                continue;
+            }
+
+            // 🚀 核心焊接 B：裝備清單 (Packing) 主權保護
+            if (modId === 'packing' && !subWhitelist.some(id => id.startsWith('pack-'))) {
+                payload.checklistItems = window.state.checklistItems || trip.checklistItems || [];
+                console.log("✅ [Core-Force] 裝備零件磁區強制導通 (物理回收件)");
+                continue;
+            }
+
+            // 模式 B：執行標準子函數洗滌
+            const processor = this[funcName];
+            if (typeof processor === 'function') {
+                console.log(`🧼 [Sector-Washing] 正在處理: ${modId}...`);
+                await processor.call(this, payload, trip, subWhitelist, hasSubChecks);
+            }
+        } catch (err) {
+            console.error(`❌ [Sector-Fatal] 模組 ${modId} 崩潰:`, err);
+        }
+    }
+
+    console.log("🏁 [Sanitization-Complete] Payload 封裝完畢");
+    console.groupEnd();
+    
+    return payload;
+},
+
+/**
+ * 🏁 [Private-UI] 處理投射成功反饋
+ */
+_handleProjectionSuccess(result, tripName) {
+    const resultArea = document.getElementById('shared-result-area');
+    
+    if (navigator.vibrate) navigator.vibrate([15, 30, 15]);
+    uiManager.showToast('✅', '投射成功，座標已固化');
+
+    if (resultArea) {
+        resultArea.classList.remove('hidden');
+        resultArea.innerHTML = `
+            <div class="mt-6 p-6 bg-emerald-50 rounded-[2rem] border-2 border-emerald-100 animate-slide-up relative overflow-hidden">
+                <div class="absolute -right-2 -top-2 opacity-10 text-6xl italic font-black text-emerald-600 uppercase">Link</div>
+                <p class="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-4">Projected Shared ID</p>
+                <div class="flex items-center justify-between gap-4 mb-4">
+                    <div class="bg-white px-6 py-4 rounded-2xl border border-emerald-200 shadow-sm flex-1">
+                        <span class="text-2xl font-black text-slate-800 tracking-[0.3em] font-mono">${result.shareId}</span>
+                    </div>
+                    <button onclick="App.copyShareId('${result.shareId}')" 
+                            class="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all cursor-pointer">
+                        <i class="fa-solid fa-copy text-xl"></i>
+                    </button>
+                </div>
+                <p class="text-[10px] text-emerald-700 font-bold italic px-1">※ 夥伴輸入此座標與密碼即可同步您洗滌後的純淨航線。</p>
+            </div>`;
+        resultArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    
+    // 數據歸檔
+    const shareHistory = JSON.parse(localStorage.getItem('tf_share_history') || '[]');
+    shareHistory.unshift({ id: result.shareId, tripName, deployedAt: Date.now() });
+    localStorage.setItem('tf_share_history', JSON.stringify(shareHistory.slice(0, 10)));
+},
+
 
 /** 📋 [Helper] 複製共享 ID 專用零件 */
 copyShareId(id) {
@@ -5408,6 +6659,83 @@ copyShareId(id) {
         uiManager.showToast('📋', '共享座標已複製');
         if (navigator.vibrate) navigator.vibrate(5);
     });
+},
+
+/** 🧭 [Shared-Wizard] 步驟精靈控制器 */
+_sharedGoStep(n) {
+    [1, 2, 3].forEach(i => {
+        const panel = document.getElementById(`shared-panel-${i}`);
+        const dot = document.getElementById(`shared-step-dot-${i}`);
+        const label = document.getElementById(`shared-step-label-${i}`);
+        if (!panel || !dot || !label) return;
+
+        // 面板顯示控制
+        panel.classList.toggle('hidden', i !== n);
+
+        // 步驟點狀態
+        if (i < n) {
+            // 已完成：主題色 + 勾勾
+            dot.className = 'w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black transition-all duration-300 theme-bg text-white';
+            dot.textContent = '✓';
+            label.className = 'text-[9px] font-black uppercase tracking-tight transition-all duration-300 theme-text-pink';
+        } else if (i === n) {
+            // 目前：主題色
+            dot.className = 'w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black transition-all duration-300 theme-bg text-white';
+            dot.textContent = i;
+            label.className = 'text-[9px] font-black uppercase tracking-tight transition-all duration-300 theme-text-pink';
+        } else {
+            // 未到：灰色
+            dot.className = 'w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black transition-all duration-300 bg-slate-100 text-slate-400';
+            dot.textContent = i;
+            label.className = 'text-[9px] font-black uppercase tracking-tight transition-all duration-300 text-slate-400';
+        }
+    });
+},
+
+/** 🔍 [Import-Validator] 即時驗證匯入欄位狀態 */
+_importCheckReady() {
+    const idEl = document.getElementById('direct-import-id');
+    const passEl = document.getElementById('direct-import-passcode');
+    const btn = document.getElementById('import-fire-btn');
+    const idHint = document.getElementById('import-id-hint');
+    const passHint = document.getElementById('import-pass-hint');
+    if (!idEl || !passEl || !btn) return;
+
+    const idVal = idEl.value.trim();
+    const passVal = passEl.value.trim();
+    const idOk = idVal.length === 8;
+    const passOk = passVal.length === 4;
+
+    // 共享代碼提示
+    if (idVal.length === 0) {
+        idHint.textContent = '';
+    } else if (idOk) {
+        idHint.textContent = '✓ 格式正確';
+        idHint.className = 'text-[9px] text-center h-3 transition-all theme-text-pink font-black';
+    } else {
+        idHint.textContent = `還差 ${8 - idVal.length} 碼`;
+        idHint.className = 'text-[9px] text-center h-3 transition-all text-slate-400';
+    }
+
+    // 密鑰提示
+    if (passVal.length === 0) {
+        passHint.textContent = '';
+    } else if (passOk) {
+        passHint.textContent = '✓ 密鑰就緒';
+        passHint.className = 'text-[9px] text-center h-3 transition-all theme-text-pink font-black';
+    } else {
+        passHint.textContent = `還差 ${4 - passVal.length} 碼`;
+        passHint.className = 'text-[9px] text-center h-3 transition-all text-slate-400';
+    }
+
+    // 按鈕狀態聯動
+    if (idOk && passOk) {
+        btn.disabled = false;
+        btn.className = 'w-full py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] transition-all theme-bg text-white shadow-lg shadow-pink-100/50 active:scale-95 cursor-pointer';
+    } else {
+        btn.disabled = true;
+        btn.className = 'w-full py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] transition-all bg-slate-100 text-slate-400 cursor-not-allowed';
+    }
 },
 
 /** 📥 [Shared-Zone] 導入共享行程：座標對焦與數據回流 */
@@ -5509,41 +6837,47 @@ async executeSharedImport() {
 
 /** 🚀 [Shared-Logic] 從常駐 UI 執行直接導入 */
 async executeDirectImport() {
-    // 1. 🚀 物理採集：對位常駐 UI 的 ID
     const shareId = document.getElementById('direct-import-id')?.value.trim().toUpperCase();
     const passcode = document.getElementById('direct-import-passcode')?.value.trim();
+    if (!shareId || shareId.length < 8) return uiManager.showToast('⚠️', '共享代碼格式不完整');
+    if (!passcode) return uiManager.showToast('🔑', '請輸入存取密鑰');
 
-    if (!shareId || shareId.length < 8) return uiManager.showToast('⚠️', '座標格式不全');
-    if (!passcode) return uiManager.showToast('🔑', '請輸入密鑰');
+    // 🚀 [新增] 載入中狀態
+    const btn = document.getElementById('import-fire-btn');
+    if (btn) {
+        btn.textContent = '讀取中...';
+        btn.disabled = true;
+        btn.className = 'w-full py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] transition-all bg-slate-100 text-slate-400 cursor-not-allowed';
+    }
 
-    uiManager.showToast('📡', '正在連結共享路網...');
-
+    uiManager.showToast('📡', '正在連線至共享路網...');
     try {
         const result = await syncEngine.fetchFromSharedZone(shareId, passcode);
-
         if (result.status === 'SUCCESS' && result.trip) {
-            // 2. 🚀 點火生成全新行程實體
             const newTrip = {
                 ...result.trip,
                 id: `TRIP_P2P_${Date.now()}`,
                 name: `[共享] ${result.trip.name}`,
                 updatedAt: Date.now()
             };
-
             state.trips.push(newTrip);
             await App.persistState(newTrip);
-
-            uiManager.showToast('✨', `航線「${newTrip.city}」吸入完畢`);
+            uiManager.showToast('✨', `行程「${newTrip.city}」已成功匯入`);
             if (navigator.vibrate) navigator.vibrate([20, 50, 20]);
-            
-            // 3. 🏁 視圖歸位：回列表頁確認新卡片
             this.navigateTo('list');
         } else {
-            uiManager.showToast('❌', result.status === 'INVALID_PASSCODE' ? '密鑰錯誤' : '座標失效');
+            uiManager.showToast('❌', result.status === 'INVALID_PASSCODE' ? '密鑰錯誤，請重新確認' : '共享代碼已失效或不存在');
         }
     } catch (err) {
         console.error("❌ [Direct-Import-Fatal]:", err);
-        uiManager.showToast('💥', '連線中斷');
+        uiManager.showToast('💥', '連線中斷，請稍後再試');
+    } finally {
+        // 🚀 [新增] 無論成功或失敗都還原按鈕
+        if (btn) {
+            btn.textContent = '匯入共享行程';
+            btn.disabled = false;
+            btn.className = 'w-full py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] transition-all theme-bg text-white shadow-lg shadow-pink-100/50 active:scale-95 cursor-pointer';
+        }
     }
 },
 
@@ -5762,7 +7096,385 @@ handleImageUpload(input) {
     reader.readAsDataURL(file);
     // 清空 input value 確保同一張圖可以重複選取觸發 onchange
     input.value = "";
-  }
+  },
+
+// ============================================================
+    // 🧪 [Data-Sanitization-Plug-ins] 數據洗滌發動機插件組
+    // ============================================================
+
+/** 📍 [Sub-Washing] 靈感小卡擷取 - 終極主權導通版 (V2026.ULTRA.FINAL_FIX) */
+async _washBacklog(payload, trip, subWhitelist, hasSubChecks) {
+    console.log("🏭 [Wash-Backlog] 啟動磁區穿透程序...");
+
+    // 🚀 1. 物理提領真值
+    const rawFuel = await window.dbManager.getAll('itineraryBacklog') || [];
+    if (rawFuel.length === 0) {
+        console.warn("⚠️ [Wash-Backlog] 磁區真空");
+        return;
+    }
+
+    const targetCity = String(trip.city || "").trim();
+
+    // 🚀 2. 執行「磁區對焦」 (確保 13 筆基準燃料就位)
+    const cityFuel = rawFuel.filter(b => b && String(b.city || "").trim() === targetCity);
+
+    // 🚀 3. 智慧感應：探測白名單中是否存在該模組的「導通指紋」
+    // 💡 職人診斷：判斷子項清單中是否包含任何 backlog 相關 ID 或城市組標籤
+    const hasBacklogSignals = Array.isArray(subWhitelist) && subWhitelist.some(id => 
+        String(id).startsWith('backlog_') || 
+        String(id).startsWith('city-group-') ||
+        rawFuel.some(f => String(f.id) === String(id))
+    );
+
+    // 🚀 4. 執行引流策略
+    let resultFuel = [];
+    if (hasSubChecks && hasBacklogSignals) {
+        // 模式 A：精密導通 (使用者有手動勾選特定靈感)
+        resultFuel = cityFuel.filter(b => {
+            const bId = String(b.id);
+            const bCity = String(b.city || "").trim();
+            return subWhitelist.includes(bId) || subWhitelist.includes(`city-group-${bCity}`);
+        });
+        console.log(`📡 [Wash-Backlog] 狀態: 精密導通 | 導通數: ${resultFuel.length}`);
+    } else {
+        // 模式 B：全量導通 (只要外層模組開關點火，且無細項指紋，則全量引入該城市)
+        // 💡 核心修正：這是解決「京都 13 筆噴不出來」的關鍵路徑
+        resultFuel = cityFuel;
+        console.log(`📡 [Wash-Backlog] 狀態: 全量引流 | 導通數: ${resultFuel.length}`);
+    }
+
+    // 🚀 5. 數據洗滌：切除 UI 暫態屬性 (isFocused, tempId 等)
+    // 💡 職人提醒：確保使用新的 Array 參考，封殺 JSON.stringify 失敗風險
+    payload.backlogs = resultFuel.map(b => {
+        const { isFocused, tempId, selected, ...purified } = b;
+        return purified;
+    });
+
+    console.log(`🏁 [Wash-Backlog-Final] 區域: ${targetCity} | 封裝能量: ${payload.backlogs.length} 筆`);
+},
+
+
+/** ✈️ [Sub-Washing] 航班交通洗滌 (V2026.ULTRA 原子化版) */
+    _washFlights(payload, trip, subWhitelist, hasSubChecks) {
+        if (!Array.isArray(payload.transport)) return;
+        
+        // 🚀 執行精密引流
+        if (hasSubChecks) {
+            payload.transport = payload.transport.filter((_, idx) => subWhitelist.includes(`flight-${idx}`));
+        }
+        
+        // 💡 職人診斷：若結果為空，執行物理熔斷，封殺空殼數據發送
+        if (payload.transport.length === 0) {
+            delete payload.transport;
+            console.log("🧹 [Melt-Success] 航班軌道無有效指紋，執行物理熔斷");
+        }
+    },
+
+    /** 🏨 [Sub-Washing] 飯店磁區洗滌 (V2026.ULTRA 原子化版) */
+    _washHotels(payload, trip, subWhitelist, hasSubChecks) {
+        if (!Array.isArray(payload.hotels)) return;
+        
+        if (hasSubChecks) {
+            payload.hotels = payload.hotels.filter((_, idx) => subWhitelist.includes(`hotel-${idx}`));
+        }
+        
+        if (payload.hotels.length === 0) {
+            delete payload.hotels;
+            console.log("🧹 [Melt-Success] 飯店軌道無有效指紋，執行物理熔斷");
+        }
+    },
+
+    /** 🗓️ [Sub-Washing] 行程表磁區洗滌 (V2026.ULTRA 結構保護版) */
+    _washItinerary(payload, trip, subWhitelist, hasSubChecks) {
+        if (!Array.isArray(payload.days)) return;
+        
+        if (hasSubChecks) {
+            // 🚀 執行「半熔斷」：保留天數節點，但清空內部的 schedules 燃料
+            // 這是為了確保接收端在 renderDetail 時，D1/D2 的標籤還在，但內容隨勾選過濾
+            payload.days = payload.days.map((day, idx) => {
+                const isDaySelected = subWhitelist.includes(`day-${idx}`);
+                return {
+                    ...day,
+                    schedules: isDaySelected ? day.schedules : []
+                };
+            });
+        }
+        
+        // 🛡️ 結構主權防禦：行程表是系統根基，絕不 delete，僅執行內容洗滌
+        console.log(`🏁 [Wash-Itinerary] 行程磁區已完成原子過濾`);
+    },
+
+/** 🎒 [Sub-Washing] 攜帶清單洗滌 (V2026.ULTRA 物件主權純化版) */
+async _washPacking(payload, trip, subWhitelist, hasSubChecks) {
+    console.log("📡 [Wash-Packing] 執行行程物件內部清單萃取...");
+
+    // 🚀 1. 數據主權對焦：直接鎖定嵌入式數據源
+    // 💡 職人診斷：放棄對獨立磁區的請求，直接從熱機後的 state 或傳入的 trip 提取 Array
+    const tripItems = window.state?.checklistItems || trip.checklistItems || [];
+
+    // 🚀 2. 執行引流策略
+    let result = [];
+    if (hasSubChecks) {
+        const isFull = subWhitelist.includes('pack-all');
+        const hasCatSignal = subWhitelist.some(id => id.startsWith('pack-cat-'));
+        
+        if (isFull) {
+            result = tripItems;
+        } else if (hasCatSignal) {
+            // 分子級分類過濾
+            result = tripItems.filter(item => 
+                subWhitelist.includes(`pack-cat-${item.category}`)
+            );
+        }
+    } else {
+        // 模式 B：全量引流
+        result = tripItems;
+    }
+
+    // 🚀 3. 數據純化：物理切除所有 IDB 指紋，回歸您提供的「原始燃料」格式
+    payload.checklistItems = result.map(item => {
+        // 💡 職人美學：僅保留 done, tagColor, id, category, color, task, text 等核心基因
+        const { tripId, timestamp, ...purified } = item;
+        return purified;
+    });
+
+    console.log(`🏁 [Wash-Packing-Final] 數據純化完畢 | 封裝件數: ${payload.checklistItems.length}`);
+},
+
+
+/** 🎙️ [Sub-Washing] 即時翻譯磁區洗滌 (V2026.ULTRA 數據轉移版) */
+async _washRealtime(payload, trip, subWhitelist, hasSubChecks) {
+    console.log("🛰️ [Wash-Realtime] 執行即時語料磁區穿透...");
+
+    // 🚀 1. 物理提領 translationVault
+    const allVault = await window.dbManager.getAll('translationVault') || [];
+    
+    // 🚀 2. 鎖定「即時/教育」類基因指紋
+    const realtimeFuel = allVault.filter(item => item.type === 'article_package' || item.edu_vocab);
+
+    // 🚀 3. 執行執行導通策略
+    if (hasSubChecks) {
+        const isFull = subWhitelist.includes('rt-all');
+        
+        payload.realtimeTrans = isFull 
+            ? realtimeFuel 
+            : realtimeFuel.filter(item => subWhitelist.includes(`rt-item-${item.id}`));
+            
+        console.log(`📡 [Wash-Realtime] 模式: 精密導通 | 導通數: ${payload.realtimeTrans.length}`);
+    } else {
+        // 預設全量引流
+        payload.realtimeTrans = realtimeFuel;
+        console.log("📡 [Wash-Realtime] 模式: 全量引流");
+    }
+
+    // 🚀 4. 數據基因純化
+    payload.realtimeTrans = payload.realtimeTrans.map(item => {
+        const { edu_listening, segments, ...purified } = item;
+        return purified;
+    });
+},
+
+/** 🎓 [Sub-Washing] 特訓小卡洗滌 (SRS 唯一主權版) */
+async _washTraining(payload, trip, subWhitelist, hasSubChecks) {
+    console.log("📡 [Wash-Training] 鎖定 SRS 磁區進行純淨導通...");
+
+    // 🚀 1. 穿透物理磁區
+    const srsMetadata = await window.dbManager.getAll('srsMetadata') || [];
+
+    if (hasSubChecks) {
+        // 🚀 2. 執行子項指紋比對
+        const isFull = subWhitelist.includes('train-srs-all');
+        const wantVocab = subWhitelist.includes('train-srs-vocab');
+        const wantQuiz = subWhitelist.includes('train-srs-quiz');
+
+        payload.srsMetadata = srsMetadata.filter(item => {
+            if (isFull) return true;
+            if (wantVocab && item.type === '單字') return true;
+            if (wantQuiz && item.type === '測驗') return true;
+            return false;
+        });
+    } else {
+        // 預設全量導通
+        payload.srsMetadata = srsMetadata;
+    }
+
+    // 🚀 3. 封殺教材雜訊：移除原本誤導的 trainingTrans 欄位
+    delete payload.trainingTrans; 
+
+    console.log(`🏁 [Wash-Training-Final] 導通純淨 SRS 燃料: ${payload.srsMetadata.length} 筆`);
+},
+
+/** 🗣️ [Sub-Washing] 情境翻譯語料擷取 (V2026.ULTRA 基因鎖定版) */
+async _washContextual(payload, trip, subWhitelist, hasSubChecks) {
+    console.log("📡 [Wash-Contextual] 啟動情境語料磁區精密穿透...");
+
+    // 🚀 1. 物理穿透：從 translationVault 提領全量數據
+    const allVault = await window.dbManager.getAll('translationVault') || [];
+
+    // 🚀 2. 基因識別：排除新聞/歌詞/即時翻譯，精確對焦 6 筆實境語料
+    // 💡 職人診斷：鎖定 type: 'contextual' 且具備 q/a 結構的數據，物理隔離 index 0-8 的雜訊
+    const conversationFuel = allVault.filter(item => 
+        item.type === 'contextual' || 
+        (item.q && item.a && !item.edu_vocab)
+    );
+
+    // 🚀 3. 探測場景指紋 (ctx-scene-XXX)
+    const hasSceneSignals = Array.isArray(subWhitelist) && subWhitelist.some(id => id.startsWith('ctx-scene-'));
+
+    // 🚀 4. 執行引流策略
+    let result = [];
+    if (hasSubChecks && hasSceneSignals) {
+        // 模式 A：精密導通 (依據場景分類)
+        result = conversationFuel.filter(item => {
+            const scene = item.category || item.scene;
+            return subWhitelist.includes(`ctx-scene-${scene}`);
+        });
+        console.log(`📡 [Wash-Contextual] 模式: 精密導通 | 導通數: ${result.length}`);
+    } else {
+        // 模式 B：全量引流 (只要有勾選，預設全部帶走那 6 筆)
+        result = conversationFuel;
+        console.log(`📡 [Wash-Contextual] 模式: 全量引流 | 導通數: ${result.length}`);
+    }
+
+    // 🚀 5. 數據純化：移除 IDB 實體索引，保留 q, a, romaji 等核心燃料
+    payload.contextualTrans = result.map(item => {
+        // 排除冗餘欄位，確保封包主權純淨
+        const { id, timestamp, segments, ...purified } = item;
+        return purified;
+    });
+
+    console.log(`🏁 [Wash-Contextual-Final] 情境語料對焦封裝完畢`);
+},
+
+
+    /** 🛒 [Sub-Washing] 購物清單穿透洗滌 */
+    _washShopping(payload, trip, subWhitelist, hasSubChecks) {
+        if (payload.days) {
+            payload.days.forEach(d => {
+                if (d.schedules) {
+                    d.schedules = d.schedules.filter(s => 
+                        s.style !== 'shopping' || !hasSubChecks || subWhitelist.includes(`shop-${s.id}`) || subWhitelist.includes('shop-all')
+                    );
+                }
+            });
+        }
+        if (hasSubChecks && !subWhitelist.includes('shop-all')) delete payload.shoppingConfig;
+    },
+
+/** 🏥 [Sub-Washing] 緊急救援磁區洗滌 (V2026.ULTRA 數據歸一化版) */
+_washEmergency(payload, trip, subWhitelist, hasSubChecks) {
+    console.log("🚑 [Wash-Emergency] 啟動救援磁區數據歸一化...");
+
+    // 🚀 1. 物理提領原始燃料
+    const rawVault = trip.emergencyVault || [];
+    
+    // 🚀 2. 執行「基因重組」 (陣列轉結構化物件)
+    // 💡 職人診斷：無論資料庫存的是陣列還是物件，統一格式化為標準規範
+    let normalized = { medical: [], insurance: null, contacts: [], embassy: [] };
+
+    if (Array.isArray(rawVault)) {
+        console.log(`🔄 [Data-Remap] 偵測到陣列結構 (${rawVault.length} 節點)，執行語義分流...`);
+        rawVault.forEach(item => {
+            const type = String(item.type || "").toLowerCase();
+            const name = String(item.name || "");
+
+            if (type === 'medical' || name.includes('醫院')) {
+                normalized.medical.push(item);
+            } else if (type === 'insurance' || name.includes('保險') || name.includes('Chubb')) {
+                normalized.insurance = item;
+            } else if (name.includes('辦事處') || name.includes('大使館')) {
+                normalized.embassy.push(item);
+            } else {
+                normalized.contacts.push(item);
+            }
+        });
+    } else {
+        // 若已經是物件，則直接繼承並確保數組存在
+        normalized = {
+            medical: rawVault.medical || [],
+            insurance: rawVault.insurance || null,
+            contacts: rawVault.contacts || [],
+            embassy: rawVault.embassy || []
+        };
+    }
+
+    // 🚀 3. 執行執行導通策略
+    const hasEmergencySignals = Array.isArray(subWhitelist) && subWhitelist.some(id => id.startsWith('emg-'));
+
+    if (hasSubChecks && hasEmergencySignals) {
+        // 模式 A：精密過濾
+        const purified = {};
+        if (subWhitelist.includes('emg-medical')) purified.medical = normalized.medical;
+        if (subWhitelist.includes('emg-insurance')) purified.insurance = normalized.insurance;
+        if (subWhitelist.includes('emg-contact')) {
+            purified.contacts = normalized.contacts;
+            purified.embassy = normalized.embassy;
+        }
+        payload.emergencyVault = purified;
+    } else {
+        // 模式 B：全量引流 (分享時預設導通)
+        payload.emergencyVault = normalized;
+    }
+
+    console.log("🏁 [Wash-Emergency-Final] 數據洗滌完畢，結構已歸一化");
+},
+
+
+/** 🛡️ [Helper] 模組物理熔斷邏輯 (V2026.ULTRA 實體對位版) */
+_terminateModule(payload, modId) {
+    // 🚀 1. 建立全量數據基因映射表
+    // 💡 職人診斷：此處的 Key 必須與 deployToSharedZone 內的封裝鍵名絕對對齊
+    const fieldMap = {
+        'flights': 'transport', 
+        'hotels': 'hotels', 
+        'itinerary': 'days',
+        'packing': 'checklistItems', // 👈 修正：對位 sharedPayload.checklistItems
+        'realtime': 'translations',  // 👈 修正：對位 sharedPayload.translations (包含語軌)
+        'training': 'srs',           // 👈 修正：對位 sharedPayload.srs
+        'contextual': 'translations', // 💡 職人提醒：情境與即時共用 translations 磁區
+        'shopping': 'days',          // 💡 職人提醒：購物通常內嵌於 days，執行半熔斷處理
+        'emergency': 'emergencyVault',
+        'backlog': 'backlogs'
+    };
+
+    const field = fieldMap[modId];
+    if (!field) {
+        console.warn(`⚠️ [Melt-Warn] 找不到模組 ID: ${modId} 的物理映射`);
+        return;
+    }
+
+    // 🚀 2. 執行物理熔斷
+    try {
+        if (field === 'days') {
+            // 模式 A：行程/購物半熔斷 - 保留天數外殼，但物理切除 schedules，封殺空殼渲染崩潰
+            if (Array.isArray(payload.days)) {
+                payload.days = payload.days.map(d => ({
+                    ...d,
+                    schedules: [] 
+                }));
+                console.log(`🧼 [Semi-Melt] 行程骨架已純化：${modId}`);
+            }
+        } else if (field === 'translations' && payload.translations) {
+            // 模式 B：語義特殊熔斷 - 根據 modId 分流切除 realtime 或 contextual
+            if (modId === 'realtime') delete payload.translations.realtime;
+            if (modId === 'contextual') delete payload.translations.contextual;
+            
+            // 若兩者皆空，則切除整個 translations
+            if (!payload.translations.realtime && !payload.translations.contextual) {
+                delete payload.translations;
+            }
+            console.log(`🧹 [Linguistic-Melt] 語義磁區已針對 ${modId} 降維`);
+        } else {
+            // 模式 C：完全熔斷 - 物理抹除
+            if (Object.prototype.hasOwnProperty.call(payload, field)) {
+                delete payload[field];
+                console.log(`🧹 [Melt-Success] 磁區 ${field} 已物理歸零`);
+            }
+        }
+    } catch (e) {
+        console.error(`❌ [Melt-Fatal] 執行 ${modId} 熔斷時發生坍塌:`, e);
+    }
+}
 };
 
 
@@ -5972,6 +7684,51 @@ App.filterTrainingFocus = (focus) => {
 //              靈感匯聚相關
 // ========================================
 
+// 🤖 草稿第二階段：從草稿取出該天小卡，啟動精煉流程
+App.startDayRefinement = function(draftId, dayIndex) {
+    const trip = state.trips?.find(t => t.id === state.activeTripId);
+    const draft = trip?.aiPlannerDrafts?.find(d => d.id === draftId);
+    if (!draft) return;
+
+    const day = draft.result?.days?.[dayIndex];
+    if (!day || !day.cards?.length) {
+        return uiManager.showToast('⚠️', `Day ${dayIndex + 1} 沒有安排小卡`);
+    }
+
+    // 🚀 1. 關閉草稿模態框
+    App.modalRemove('ai-draft-detail-modal');
+    App.modalRemove('ai-draft-modal');
+
+    // 🚀 2. 確保在 backlog 頁面
+    App.navigateTo('backlog');
+
+    // 🚀 3. 等頁面渲染完，把該天小卡加上 .selected class
+    setTimeout(() => {
+        // 先清除所有選取
+        backlogManager.clearSelection();
+
+        // 🚀 兼容新舊格式：新格式 {id, suggested_time}，舊格式純字串
+        day.cards.forEach(card => {
+            const cardId = typeof card === 'object' ? card.id : card;
+            if (!cardId) return;
+
+            backlogManager.toggleSelection(cardId);
+            const cardEl = document.getElementById(`card-${cardId}`);
+            if (cardEl) {
+                cardEl.classList.add('selected');
+                cardEl.style.border = '2px solid #D4537E';
+                cardEl.style.background = '#FBEAF0';
+                cardEl.style.boxShadow = '0 4px 16px rgba(212,83,126,0.2)';
+                cardEl.style.transform = 'translateY(-2px)';
+            }
+        });
+
+        viewEngine.updateRefineryFAB();
+        uiManager.showToast('🏭', `Day ${dayIndex + 1}「${day.theme}」已備妥，點 AI 規劃進入精煉`);
+
+    }, 500);
+};
+
 // 🚀 備選精煉廠代理 (Refinery Proxy)
 // 1. 採集原子數據 (店名/城市)
 App.addBacklogRecord = (name, city, info) => backlogManager.addRecord(name, city, info);
@@ -6084,24 +7841,26 @@ App.saveBacklogEdit = async (id) => {
 
 /** 🧹 2. 物理回收原子燃料 (具備視圖熱刷新版) */
 App.deleteBacklogItem = async (id) => {
-    try {
-        // 1. 🚀 執行物理切除 (磁區回收)
-        const success = await backlogManager.deleteItem(id);
-        
-        if (success) {
-            // 💡 職人診斷：刪除成功後，必須立即導通視圖更新
-            // 我們不直接操作 DOM，而是透過路由重連確保過濾器與排序狀態 100% 正確
-            App.navigateTo('backlog'); 
-            
-            // 物理反饋：短促震動
-            if (navigator.vibrate) navigator.vibrate(8);
-            
-            console.log(`📡 [Backlog-Sync] 原子燃料 ${id} 已回收並觸發視圖熱重連`);
+    // 🚀 [新增] 二次確認，防止誤觸
+    const card = document.getElementById(`card-${id}`);
+    const name = card?.querySelector('p')?.textContent?.trim() || '這張靈感';
+
+    uiManager.showToast('🗑️', `確定刪除「${name}」？`, 5000, {
+        confirmText: '確認刪除',
+        onConfirm: async () => {
+            try {
+                const success = await backlogManager.deleteItem(id);
+                if (success) {
+                    App.navigateTo('backlog');
+                    if (navigator.vibrate) navigator.vibrate(8);
+                    console.log(`📡 [Backlog-Sync] 原子燃料 ${id} 已回收並觸發視圖熱重連`);
+                }
+            } catch (err) {
+                console.error("❌ [Backlog-Delete-Collapse]:", err);
+                uiManager.showToast('⚠️', '數據回收過程發生斷路');
+            }
         }
-    } catch (err) {
-        console.error("❌ [Backlog-Delete-Collapse]:", err);
-        uiManager.showToast('⚠️', '數據回收過程發生斷路');
-    }
+    });
 };
 
 
@@ -6430,6 +8189,136 @@ App.theatreCopyPrompt = () => App.activeTranslationEngine.theatreCopyPrompt();
 
 // 對位 Step 5：數據固化匯入
 App.theatreImportToVault = () => App.activeTranslationEngine.theatreImportToVault();
+
+
+
+// ==============================
+//            聲學診斷
+// ==============================
+
+App._initAcousticDiagnosticPanel = function() {
+    try {
+        const history = JSON.parse(localStorage.getItem('tf_choke_history') || '[]');
+        const triggers = JSON.parse(localStorage.getItem('tf_hot_triggers') || '[]');
+        const threshold = localStorage.getItem('tf_suggested_threshold') || '—';
+
+        // 統計數字
+        const countEl = document.getElementById('dm-choke-count');
+        const threshEl = document.getElementById('dm-threshold');
+        if (countEl) countEl.textContent = history.length + ' 筆';
+        if (threshEl) threshEl.textContent = threshold + ' 字';
+
+        // 高頻觸發詞
+        const tagEl = document.getElementById('dm-trigger-tags');
+        if (tagEl) {
+            tagEl.innerHTML = triggers.length
+                ? triggers.map(t => `<span style="font-size:11px;background:#FBEAF0;color:#993556;border:0.5px solid #F4C0D1;padding:3px 10px;border-radius:20px;">${t}</span>`).join('')
+                : '<span style="font-size:11px;color:var(--color-text-tertiary);">尚無高頻觸發詞</span>';
+        }
+
+        // 窒息記錄列表
+        const listEl = document.getElementById('dm-choke-list');
+        if (!listEl) return;
+
+        if (history.length === 0) {
+            listEl.innerHTML = '<p style="font-size:11px;color:var(--color-text-tertiary);">尚無窒息記錄</p>';
+            return;
+        }
+
+        window._dmSelected = new Set();
+        listEl.innerHTML = history.slice(-10).reverse().map((h, i) => `
+            <div onclick="window._dmToggle(${i})" id="dm-row-${i}"
+                 style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-bottom:6px;cursor:pointer;border:0.5px solid transparent;transition:all 0.15s;">
+                <div id="dm-check-${i}" style="width:16px;height:16px;border-radius:4px;border:1.5px solid var(--color-border-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;margin-top:2px;"></div>
+                <span style="font-size:10px;font-weight:500;color:#993556;background:#FBEAF0;padding:2px 6px;border-radius:4px;flex-shrink:0;margin-top:1px;">${h.len}字</span>
+                <div style="flex:1;min-width:0;">
+                    <p style="font-size:11px;color:var(--color-text-secondary);margin:0;line-height:1.6;word-break:break-all;">${h.full || (h.prefix + '…' + h.suffix)}</p>
+                    ${h.triggers.length ? `<p style="font-size:10px;color:#D4537E;margin:3px 0 0;">觸發詞：${h.triggers.join('、')}</p>` : ''}
+                    <p style="font-size:10px;color:var(--color-text-tertiary);margin:2px 0 0;">${new Date(h.timestamp).toLocaleString()}</p>
+                </div>
+            </div>
+        `).join('');
+
+        window._dmToggle = function(idx) {
+            const row = document.getElementById('dm-row-' + idx);
+            const check = document.getElementById('dm-check-' + idx);
+            if (!row || !check) return;
+            if (window._dmSelected.has(idx)) {
+                window._dmSelected.delete(idx);
+                row.style.background = 'var(--color-background-secondary)';
+                row.style.borderColor = 'transparent';
+                check.textContent = '';
+            } else {
+                window._dmSelected.add(idx);
+                row.style.background = '#FBEAF0';
+                row.style.borderColor = '#F4C0D1';
+                check.textContent = '✓';
+                check.style.color = '#993556';
+            }
+            const btn = document.getElementById('dm-copy-sel-btn');
+            if (btn) btn.style.display = window._dmSelected.size > 0 ? 'inline-flex' : 'none';
+        };
+
+    } catch(e) {
+        console.error('❌ [DiagPanel] 初始化失敗:', e);
+    }
+};
+
+
+// 聲學診斷面板操作函數
+App.selectAllChokeRecords = function() {
+
+    // 確保面板已初始化
+    if (!window._dmToggle) App._initAcousticDiagnosticPanel();
+
+    try {
+        const history = JSON.parse(localStorage.getItem('tf_choke_history') || '[]');
+        const count = Math.min(history.length, 10);
+        window._dmSelected = new Set([...Array(count).keys()]);
+        for (let i = 0; i < count; i++) {
+            const row = document.getElementById('dm-row-' + i);
+            const check = document.getElementById('dm-check-' + i);
+            if (row) { row.style.background = '#FBEAF0'; row.style.borderColor = '#F4C0D1'; }
+            if (check) { check.textContent = '✓'; check.style.color = '#993556'; }
+        }
+        const btn = document.getElementById('dm-copy-sel-btn');
+        if (btn) btn.style.display = 'inline-flex';
+    } catch(e) {}
+};
+
+App.copySelectedChokeRecords = function() {
+    try {
+        const history = JSON.parse(localStorage.getItem('tf_choke_history') || '[]').slice(-10).reverse();
+        const triggers = JSON.parse(localStorage.getItem('tf_hot_triggers') || '[]');
+        const items = [...(window._dmSelected || [])].map(i => history[i]).filter(Boolean);
+        const text = `[TravelFlow 聲學診斷 — 選取記錄]\n高頻觸發詞：${triggers.join('、') || '無'}\n\n` +
+            items.map(h => `• ${h.len}字 | 觸發詞：${h.triggers.join('、') || '無'}\n  內容：${h.full || (h.prefix + '…' + h.suffix)}\n  時間：${new Date(h.timestamp).toLocaleString()}`).join('\n\n');
+        navigator.clipboard.writeText(text).then(() => uiManager.showToast('✅', `已複製 ${items.length} 筆記錄`));
+    } catch(e) { uiManager.showToast('⚠️', '複製失敗'); }
+};
+
+App.copyAllChokeRecords = function() {
+    try {
+        const history = JSON.parse(localStorage.getItem('tf_choke_history') || '[]');
+        const triggers = JSON.parse(localStorage.getItem('tf_hot_triggers') || '[]');
+        const threshold = localStorage.getItem('tf_suggested_threshold') || '未設定';
+        const text = `[TravelFlow 聲學診斷完整報告]\n建議閾值：${threshold}字\n高頻觸發詞：${triggers.join('、') || '無'}\n\n所有記錄（共${history.length}筆）：\n` +
+            history.map(h => `• ${h.len}字 | 觸發詞：${h.triggers.join('、') || '無'}\n  內容：${h.full || (h.prefix + '…' + h.suffix)}\n  時間：${new Date(h.timestamp).toLocaleString()}`).join('\n\n');
+        navigator.clipboard.writeText(text).then(() => uiManager.showToast('✅', `已複製全部 ${history.length} 筆`));
+    } catch(e) { uiManager.showToast('⚠️', '複製失敗'); }
+};
+
+App.clearAcousticLearning = function() {
+    localStorage.removeItem('tf_choke_history');
+    localStorage.removeItem('tf_hot_triggers');
+    localStorage.removeItem('tf_suggested_threshold');
+    uiManager.showToast('✅', '學習庫已清除');
+    // 重新渲染聲學頁面
+    const container = document.getElementById('content-container');
+    if (container && typeof viewEngine._renderAcousticTab === 'function') {
+        App.navigateTo('settings');
+    }
+};
 
 // ==========================================
 // 🚀 最終物理焊接：封殺 (index):1 報錯

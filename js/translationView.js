@@ -702,85 +702,21 @@ renderCategoryTabs() {
     });
 },
 
-
-/** 🎨 [Private] 歷史小卡渲染引擎 (V2026.ULTRA 聲學與視覺加固版) */
-_renderLiveHistoryCards(container, data) {
-    if (!container) return;
-    
-    container.innerHTML = data.map(item => {
-        const isExpanded = this.expandedIds?.has(item.id);
-        const segments = item.segments || [[item.q || item.原文 || "", item.a || item.翻譯 || ""]];
-        
-        return `
-        <div class="relative mb-4 bg-white rounded-[1.8rem] shadow-sm border border-slate-50 overflow-hidden transition-all">
-            <div class="flex items-center gap-4 p-5 active:bg-slate-100 transition-colors cursor-pointer" 
-                 onclick="translationEngine.toggleArticleExpand('${item.id}')">
-                
-                <div class="w-12 h-12 shrink-0 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl shadow-inner">
-                    ${item.type === 'article_package' ? '📄' : '💬'}
-                </div>
-
-                <div class="flex-1 min-w-0">
-                    <h4 class="font-black text-slate-800 text-[15px] leading-snug truncate">
-                        ${item.title || item.q || "未命名翻譯"}
-                    </h4>
-                    <div class="flex items-center gap-2 mt-1.5">
-                        <span class="px-2 py-0.5 rounded-md bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-tighter">${segments.length} SEG</span>
-                        <span class="px-2 py-0.5 rounded-md bg-pink-50 text-[9px] font-black text-pink-400"># ${item.category || '一般'}</span>
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-2 border-l border-slate-100 pl-3">
-                    <button onclick="event.stopPropagation(); translationEngine.editArticlePackage('${item.id}')" 
-                            class="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 font-black text-[12px]">改</button>
-                    <button onclick="event.stopPropagation(); translationEngine.deleteArticleRecord('${item.id}')" 
-                            class="w-9 h-9 flex items-center justify-center rounded-xl text-slate-300 hover:text-pink-500 font-black text-[12px]">刪</button>
-                    <div class="w-6 h-9 flex items-center justify-center text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}">▼</div>
-                </div>
-            </div>
-
-            ${isExpanded ? `
-                <div class="border-t border-slate-50 bg-slate-50/40 p-5 space-y-6">
-                    ${segments.map((seg, idx) => {
-                        const q = Array.isArray(seg) ? seg[0] : (seg.q || seg.原文 || "");
-                        const a = Array.isArray(seg) ? seg[1] : (seg.a || seg.翻譯 || "");
-                        
-                        // 🚀 聲學對焦：對原文進行 URL 編碼以利傳輸
-                        const safeQ = encodeURIComponent(q);
-                        
-                        return `
-                            <div class="relative group active:scale-[0.99] transition-transform" 
-                                 onclick="event.stopPropagation(); window.audioManager?.speak(decodeURIComponent('${safeQ}'))">
-                                <div class="absolute -left-2 top-0 bottom-0 w-1 bg-pink-200 rounded-full opacity-0 group-active:opacity-100 transition-opacity"></div>
-                                <div class="pl-2">
-                                    <div class="text-[13px] text-slate-400 font-bold mb-1 tracking-tight italic flex justify-between">
-                                        <span>SEGMENT #${idx + 1}</span>
-                                        <span class="text-pink-300 text-[10px]">🔊 點擊朗讀</span>
-                                    </div>
-                                    <div class="text-[16px] text-slate-800 font-black leading-relaxed mb-1.5">${q}</div>
-                                    <div class="text-[14px] text-slate-500 font-bold leading-normal">${a}</div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            ` : ''}
-        </div>
-        `;
-    }).join('');
-},
-
-
-/** 🎨 視覺樣式對焦器 (動態磁區感應版) */
 _getCategoryStyle(category) {
     const staticMap = {
         '交通': { icon: '🚃', color: 'bg-blue-50 text-blue-500 border-blue-100' },
         '用餐': { icon: '🍱', color: 'bg-orange-50 text-orange-500 border-orange-100' },
         '購物': { icon: '🛍️', color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
         '住宿': { icon: '🏨', color: 'bg-purple-50 text-purple-500 border-purple-100' },
-        '景點': { icon: '⛩️', color: 'bg-rose-50 text-rose-500 border-rose-100' }
+        '景點': { icon: '⛩️', color: 'bg-rose-50 text-rose-500 border-rose-100' },
+        '會話': { icon: '🎭', color: 'bg-pink-50 text-pink-500 border-pink-100' },
+        '歌詞': { icon: '🎵', color: 'bg-purple-50 text-purple-500 border-purple-100' },
+        '技術': { icon: '🛠️', color: 'bg-slate-50 text-slate-500 border-slate-100' },
+        '散文': { icon: '📝', color: 'bg-amber-50 text-amber-500 border-amber-100' },
+        '新聞': { icon: '📻', color: 'bg-slate-50 text-slate-400 border-slate-100' },
+        '醫藥': { icon: '💊', color: 'bg-red-50 text-red-400 border-red-100' },
+        '一般': { icon: '📄', color: 'bg-slate-50 text-slate-400 border-slate-100' },
     };
-    // 🚀 核心邏輯：若不在靜態清單內，統一對位至「一般」樣式
     return staticMap[category] || { icon: '📄', color: 'bg-slate-50 text-slate-400 border-slate-100' };
 },
 
@@ -1820,32 +1756,59 @@ _renderOriginalTab(item) {
         const safeQ = q.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
 
         return `
-            <div class="bg-white/80 p-6 rounded-[2.2rem] shadow-sm border border-slate-50 relative group transition-all hover:shadow-lg hover:shadow-slate-100 animate-fade-in mb-4">
-                <div class="flex justify-between items-start mb-4">
-                    <span class="text-[9px] font-black text-slate-300 tracking-[0.2em] italic">SEGMENT #${String(idx + 1).padStart(2, '0')}</span>
-                    
-                    <div class="flex gap-2.5">
-                        <button onclick="event.stopPropagation(); translationEngine.speakSegment('${safeQ}')" 
-                                class="w-10 h-10 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center transition-all active:scale-90 hover:bg-blue-50 hover:text-blue-500 border border-slate-100 shadow-inner">
-                            <i class="fa-solid fa-volume-high text-[13px]"></i>
-                        </button>
+    <div class="bg-white/80 p-6 rounded-[2.2rem] shadow-sm border border-slate-50 relative group transition-all hover:shadow-lg hover:shadow-slate-100 animate-fade-in mb-4">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+            <span style="
+                font-size: 9px; font-weight: 800; font-style: italic;
+                color: #993556; background: #FBEAF0;
+                border-radius: 4px; padding: 2px 7px;
+                letter-spacing: 0.03em;
+            ">${String(idx + 1).padStart(2, '0')}</span>
+        </div>
+        
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+            <!-- 時間軸 -->
+            <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex-shrink: 0;">
+                <div style="
+                    width: 10px; height: 10px; border-radius: 50%;
+                    border: 2px solid ${idx === 0 ? '#D4537E' : '#185FA5'};
+                    background: white; margin-top: 4px; flex-shrink: 0;
+                "></div>
+                <div style="width: 1.5px; background: #E2E8F0; flex: 1; min-height: 20px; margin-top: 3px;"></div>
+            </div>
 
-                        <button onclick="event.stopPropagation(); translationEngine.openEduMenu('${item.id}', ${idx})" 
-                                class="w-10 h-10 rounded-2xl bg-pink-50 text-pink-500 flex items-center justify-center transition-all active:scale-90 hover:bg-pink-500 hover:text-white shadow-sm border border-pink-100">
-                            <span style="display: inline-block; transform: translateY(-1px); font-size: 15px;">🎓</span>
-                        </button>
-                    </div>
+            <!-- 內容 -->
+            <div style="flex: 1;">
+                <p style="font-size: 15px; font-weight: 700; color: #1a1a1a; line-height: 1.75; margin: 0 0 10px;">${q}</p>
+                <div style="padding-left: 10px; border-left: 3px solid #F4C0D1; margin-bottom: 12px;">
+                    <p style="font-size: 13px; font-weight: 500; color: #993556; line-height: 1.75; margin: 0;">${a}</p>
                 </div>
-                
-                <div class="space-y-4">
-                    <p class="text-[1.15rem] font-medium text-slate-800 leading-relaxed tracking-tight select-text">${q}</p>
-                    <div class="flex items-center gap-3 py-1">
-                        <div class="h-[1.5px] flex-1 bg-gradient-to-r from-slate-100 via-slate-50 to-transparent rounded-full"></div>
-                        <div class="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
-                    </div>
-                    <p class="text-[0.95rem] font-bold text-slate-400 leading-normal select-text">${a}</p>
+
+                <!-- 底部按鈕 -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <button onclick="event.stopPropagation(); translationEngine.speakSegment('${safeQ}')"
+        style="
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 11px; font-weight: 700; color: #5F5E5A;
+            background: #FBEAF0; border: none; border-radius: 6px;
+            padding: 5px 10px; cursor: pointer;
+        ">
+    <i class="fa-solid fa-volume-high" style="font-size: 10px;"></i> 朗讀
+</button>
+
+<button onclick="event.stopPropagation(); translationEngine.openEduMenu('${item.id}', ${idx})"
+        style="
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 11px; font-weight: 700; color: #993556;
+            background: #FBEAF0; border: none; border-radius: 6px;
+            padding: 5px 10px; cursor: pointer;
+        ">
+    <i class="fa-solid fa-graduation-cap" style="font-size: 10px;"></i> 教材發動機
+</button>
                 </div>
-            </div>`;
+            </div>
+        </div>
+    </div>`;
     }).join('');
 },
 
@@ -1921,8 +1884,16 @@ updateTabUI(articleId, tabName) {
     },
 
 /** 📖 [Contextual Module] 情境翻譯系統視圖 (V2026.ULTRA 絕對座標導通版) */
-renderContextualTranslation(container, vaultItems = [], activeCategory = '全部') {
-    const safeVault = Array.isArray(vaultItems) ? vaultItems : [];
+async renderContextualTranslation(container, vaultItems = [], activeCategory = '全部') {
+    const safeVault = Array.isArray(vaultItems) && vaultItems.length > 0 
+    ? vaultItems 
+    : await (async () => {
+        try {
+            const all = await dbManager.getAll(dbManager.STORES.TRANS_VAULT);
+            const currentLang = localStorage.getItem('tf_trans_lang') || 'JP';
+            return all.filter(item => item.lang === currentLang && item.type === 'contextual');
+        } catch(e) { return []; }
+    })();
     
     // 🚀 1. 語義對焦與真值校準
     const trip = window.state?.trips.find(t => t.id === window.state.activeTripId);
@@ -2132,114 +2103,215 @@ focusTranslateTab(cat) {
 
 
 
-/** 🎨 [Module] 文章包渲染引擎 (V2026.ULTRA.FINAL 比例復位與空間穩壓版) */
 _renderArticlePackageWithTabs(item) {
     const style = translationView._getCategoryStyle(item.category || '一般');
     
     return `
-        <div class="bg-white rounded-[2.5rem] px-4 py-6 mb-6 border border-slate-100 shadow-sm animate-slide-up overflow-hidden" id="pkg-${item.id}">
-            <div class="flex justify-between items-start cursor-pointer mb-2 px-1" onclick="translationEngine.toggleArticleFolder('${item.id}')">
-                <div class="flex items-start gap-4 min-w-0 flex-1">
-                    <div class="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-xl shadow-inner shrink-0 mt-1">
-                        ${style.icon}
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <h4 class="text-[17px] font-black text-slate-800 leading-[1.4] mb-2 break-words">${item.title}</h4>
-                        <div class="flex flex-wrap items-center gap-2">
-                             <span class="text-[11px] font-black px-2.5 py-0.5 rounded-lg border-2 shadow-sm ${style.color} tracking-tight">
-                                #${item.category || '一般'}
-                             </span>
-                             <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                                ${item.segments?.length || 0} SEGS
-                             </span>
-                        </div>
+        <div style="
+            background: white; border-radius: 14px;
+            border: 0.5px solid #E2E8F0; overflow: hidden;
+            margin-bottom: 10px; transition: border-color 0.2s;
+        " id="pkg-${item.id}"
+        onmouseenter="this.style.borderColor='#F4C0D1'"
+        onmouseleave="this.style.borderColor='#E2E8F0'">
+
+            <!-- Header -->
+            <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer;"
+                 onclick="translationEngine.toggleArticleFolder('${item.id}')">
+
+                <div style="
+                    width: 40px; height: 40px; flex-shrink: 0;
+                    border-radius: 10px; background: #FBEAF0;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 18px;
+                ">${style.icon}</div>
+
+                <div style="flex: 1; min-width: 0;">
+                    <h4 style="
+                        font-size: 14px; font-weight: 700; color: #1a1a1a;
+                        line-height: 1.4; margin: 0 0 5px;
+                        word-break: break-word;
+                    ">${item.title}</h4>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="
+                            font-size: 9px; font-weight: 700;
+                            color: #993556; background: #FBEAF0;
+                            border-radius: 4px; padding: 2px 6px;
+                        ">#${item.category || '一般'}</span>
+                        <span style="
+                            font-size: 9px; font-weight: 700;
+                            color: #5F5E5A; background: #FBEAF0;
+                            border-radius: 4px; padding: 2px 6px;
+                        ">${item.segments?.length || 0} 段落</span>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2 shrink-0 ml-2 mt-1">
-                    <button onclick="event.stopPropagation(); translationEngine.editArticlePackage('${item.id}')" 
-                            class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:theme-text-pink border border-slate-100 shadow-sm transition-all active:scale-90">
-                        <i class="fa-solid fa-pen-to-square text-[13px]"></i>
+                <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0; padding-left: 10px; border-left: 0.5px solid #E2E8F0;">
+                    <button onclick="event.stopPropagation(); translationEngine.editArticlePackage('${item.id}')"
+                            style="
+                                width: 32px; height: 32px;
+                                display: flex; align-items: center; justify-content: center;
+                                border-radius: 8px; border: none; cursor: pointer;
+                                background: #FBEAF0; color: #5F5E5A; transition: all 0.2s;
+                            "
+                            onmouseenter="this.style.background='#E6F1FB';this.style.color='#185FA5'"
+                            onmouseleave="this.style.background='#FBEAF0';this.style.color='#5F5E5A'">
+                        <i class="fa-solid fa-pen-to-square" style="font-size: 11px;"></i>
                     </button>
-                    <div id="arrow-${item.id}" class="w-8 h-10 flex items-center justify-center text-slate-300 transition-transform duration-500">
-                        <i class="fa-solid fa-chevron-down text-[11px]"></i>
+                    <div id="arrow-${item.id}" style="
+                        width: 24px; height: 32px;
+                        display: flex; align-items: center; justify-content: center;
+                        color: #B4B2A9; font-size: 11px; transition: transform 0.3s;
+                    ">
+                        <i class="fa-solid fa-chevron-down"></i>
                     </div>
                 </div>
             </div>
 
-            <div class="hidden mt-6 pt-6 border-t border-slate-50 relative" id="content-${item.id}">
-                <div class="flex gap-1.5 bg-slate-100/60 p-1.5 rounded-[1.3rem] mb-6 overflow-x-auto no-scrollbar relative z-50">
+            <!-- 展開內容 -->
+            <div class="hidden" id="content-${item.id}" style="border-top: 0.5px solid #E2E8F0;">
+                <div style="display: flex; gap: 6px; background: #FBEAF0; padding: 10px 12px; overflow-x: auto;">
                     ${['原文', '單字', '文法', '測驗', '聽力'].map((tab, i) => `
-                        <button onclick="event.stopPropagation(); translationEngine.switchArticleTab('${item.id}', '${tab}')" 
-                                id="tab-btn-${item.id}-${tab}"
-                                class="art-tab-btn flex-1 py-2.5 px-4 rounded-xl font-black text-[10px] whitespace-nowrap transition-all duration-300 ${i === 0 ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}">
-                            ${tab}
-                        </button>
-                    `).join('')}
+    <button onclick="
+                event.stopPropagation();
+                this.closest('[id^=content-]').querySelectorAll('.art-tab-btn').forEach(b => {
+                    b.style.background = 'transparent';
+                    b.style.color = '#888780';
+                    b.style.boxShadow = 'none';
+                });
+                this.style.background = '#D4537E';
+                this.style.color = 'white';
+                this.style.boxShadow = '0 2px 8px rgba(212,83,126,0.3)';
+                translationEngine.switchArticleTab('${item.id}', '${tab}');
+             "
+            id="tab-btn-${item.id}-${tab}"
+            style="
+                flex: 1; padding: 8px 12px; border-radius: 8px;
+                font-size: 11px; font-weight: 700; white-space: nowrap;
+                border: none; cursor: pointer; transition: all 0.2s;
+                ${i === 0
+                    ? 'background: #D4537E; color: white; box-shadow: 0 2px 8px rgba(212,83,126,0.3);'
+                    : 'background: transparent; color: #888780;'}
+            "
+            class="art-tab-btn">
+        ${tab}
+    </button>
+`).join('')}
                 </div>
 
-                <div id="tab-content-${item.id}" 
-                     class="relative z-10 min-h-[100px] animate-fade-in px-1" 
-                     style="line-height: 3.6 !important; letter-spacing: 0.05em !important; font-size: 19px !important; font-weight: 500; word-break: break-word;">
+                <div id="tab-content-${item.id}"
+     style="padding: 12px 14px; min-height: 100px; word-break: break-word; background: white;"
+                     class="animate-fade-in">
                 </div>
             </div>
         </div>`;
 },
 
 
-/** 🎨 [UI-Revolution] 文章包渲染引擎 (V2026.ULTRA.FINAL 空間解放與比例復位版) */
 _generateArticlePackageHTML(item) {
     const style = this._getCategoryStyle(item.category);
-    
+
     return `
-        <div class="bg-white rounded-[2.5rem] px-4 py-6 mb-6 border border-slate-100 shadow-sm animate-slide-up overflow-hidden" id="pkg-${item.id}">
-            <div class="flex justify-between items-start cursor-pointer mb-2 px-1" onclick="translationEngine.toggleArticleFolder('${item.id}')">
-                <div class="flex items-start gap-4 min-w-0 flex-1">
-                    <div class="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-xl shadow-inner shrink-0 mt-1">
-                        ${style.icon}
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <h4 class="text-[17px] font-black text-slate-800 leading-[1.4] mb-2 break-words">${item.title}</h4>
-                        <div class="flex flex-wrap items-center gap-2">
-                             <span class="text-[11px] font-black px-2.5 py-1 rounded-lg border-2 shadow-sm ${style.color}">
-                                #${item.category || '一般'}
-                             </span>
-                             <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                                ${item.segments?.length || 0} SEGS
-                             </span>
-                        </div>
+        <div style="
+            background: white; border-radius: 14px;
+            border: 0.5px solid #E2E8F0; overflow: hidden;
+            margin-bottom: 10px; transition: border-color 0.2s;
+        " id="pkg-${item.id}"
+        onmouseenter="this.style.borderColor='#F4C0D1'"
+        onmouseleave="this.style.borderColor='#E2E8F0'">
+
+            <!-- Header -->
+            <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer;"
+                 onclick="translationEngine.toggleArticleFolder('${item.id}')">
+
+                <div style="
+                    width: 40px; height: 40px; flex-shrink: 0;
+                    border-radius: 10px; background: #FBEAF0;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 18px;
+                ">${style.icon}</div>
+
+                <div style="flex: 1; min-width: 0;">
+                    <h4 style="
+                        font-size: 14px; font-weight: 700; color: #1a1a1a;
+                        line-height: 1.4; margin: 0 0 5px;
+                        word-break: break-word;
+                    ">${item.title}</h4>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="
+                            font-size: 9px; font-weight: 700;
+                            color: #993556; background: #FBEAF0;
+                            border-radius: 4px; padding: 2px 6px;
+                        ">#${item.category || '一般'}</span>
+                        <span style="
+                            font-size: 9px; font-weight: 700;
+                            color: #5F5E5A; background: #FBEAF0;
+                            border-radius: 4px; padding: 2px 6px;
+                        ">${item.segments?.length || 0} 段落</span>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2 shrink-0 ml-2 mt-1">
-                    <button onclick="event.stopPropagation(); translationEngine.editArticlePackage('${item.id}')" 
-                            class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:theme-text-pink border border-slate-100 shadow-sm transition-all active:scale-90">
-                        <i class="fa-solid fa-pen-to-square text-[13px]"></i>
+                <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0; padding-left: 10px; border-left: 0.5px solid #E2E8F0;">
+                    <button onclick="event.stopPropagation(); translationEngine.editArticlePackage('${item.id}')"
+                            style="
+                                width: 32px; height: 32px;
+                                display: flex; align-items: center; justify-content: center;
+                                border-radius: 8px; border: none; cursor: pointer;
+                                background: #FBEAF0; color: #5F5E5A; transition: all 0.2s;
+                            "
+                            onmouseenter="this.style.background='#E6F1FB';this.style.color='#185FA5'"
+                            onmouseleave="this.style.background='#FBEAF0';this.style.color='#5F5E5A'">
+                        <i class="fa-solid fa-pen-to-square" style="font-size: 11px;"></i>
                     </button>
-                    <div id="arrow-${item.id}" class="w-8 h-10 flex items-center justify-center text-slate-300 transition-transform duration-500">
-                        <i class="fa-solid fa-chevron-down text-[11px]"></i>
+                    <div id="arrow-${item.id}" style="
+                        width: 24px; height: 32px;
+                        display: flex; align-items: center; justify-content: center;
+                        color: #B4B2A9; font-size: 11px; transition: transform 0.3s;
+                    ">
+                        <i class="fa-solid fa-chevron-down"></i>
                     </div>
                 </div>
             </div>
 
-            <div class="hidden mt-6 pt-6 border-t border-slate-50 relative" id="content-${item.id}">
-                <div class="flex gap-1.5 bg-slate-100/60 p-1.5 rounded-[1.3rem] mb-6 overflow-x-auto no-scrollbar relative z-50">
+            <!-- 展開內容 -->
+            <div class="hidden" id="content-${item.id}" style="border-top: 0.5px solid #E2E8F0;">
+                <div style="display: flex; gap: 6px; background: #FBEAF0; padding: 10px 12px; overflow-x: auto;">
                     ${['原文', '單字', '文法', '測驗', '聽力'].map((tab, i) => `
-                        <button onclick="event.stopPropagation(); translationEngine.switchArticleTab('${item.id}', '${tab}')" 
-                                id="tab-btn-${item.id}-${tab}"
-                                class="art-tab-btn flex-1 py-2.5 px-4 rounded-xl font-black text-[10px] whitespace-nowrap transition-all duration-300 ${i === 0 ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}">
-                            ${tab}
-                        </button>
-                    `).join('')}
+    <button onclick="
+                event.stopPropagation();
+                this.closest('[id^=content-]').querySelectorAll('.art-tab-btn').forEach(b => {
+                    b.style.background = 'transparent';
+                    b.style.color = '#888780';
+                    b.style.boxShadow = 'none';
+                });
+                this.style.background = '#D4537E';
+                this.style.color = 'white';
+                this.style.boxShadow = '0 2px 8px rgba(212,83,126,0.3)';
+                translationEngine.switchArticleTab('${item.id}', '${tab}');
+             "
+            id="tab-btn-${item.id}-${tab}"
+            style="
+                flex: 1; padding: 8px 12px; border-radius: 8px;
+                font-size: 11px; font-weight: 700; white-space: nowrap;
+                border: none; cursor: pointer; transition: all 0.2s;
+                ${i === 0
+                    ? 'background: #D4537E; color: white; box-shadow: 0 2px 8px rgba(212,83,126,0.3);'
+                    : 'background: transparent; color: #888780;'}
+            "
+            class="art-tab-btn">
+        ${tab}
+    </button>
+`).join('')}
                 </div>
 
-                <div id="tab-content-${item.id}" 
-                     class="relative z-10 min-h-[100px] animate-fade-in px-1" 
-                     style="line-height: 3.6 !important; letter-spacing: 0.05em !important; font-size: 19px !important; font-weight: 500; word-break: break-word;">
+                <div id="tab-content-${item.id}"
+     style="padding: 12px 14px; min-height: 100px; word-break: break-word; background: white;"
+                     class="animate-fade-in">
                 </div>
             </div>
         </div>`;
 },
+
 
 /** 🎨 [Module] 教材等級過濾器 (V2026.ULTRA.TIER) */
 _renderTierFilterBar(articleId, tabName, activeTier) {
@@ -2380,6 +2452,17 @@ _renderEduPlaceholder(itemId, tabName) {
 
 /** 🧪 [Training-Wall] 特訓牆核心渲染發動機 (V2026.ULTRA.FINAL_STABLE) */
 renderTrainingWall(container, dueItems) {
+
+
+// 非挑戰進行中就恢復 UI
+if (!state.challengeActive) {
+    document.querySelector('header')?.style.removeProperty('display');
+    document.querySelectorAll('.sticky, .training-header, #level-tabs-track').forEach(el => 
+        el.style.removeProperty('display')
+    );
+    document.getElementById('content-container').style.paddingBottom = '';
+}
+
     // 🚀 1. 物理感應：獲取當前全局語系 DNA 與上下文狀態
     const currentLang = localStorage.getItem('tf_trans_lang') || 'JP';
     const context = state.trainingContext || { mode: '讀', level: 'All', page: 1, perPage: 10, displayMode: '漢字' };
@@ -2440,96 +2523,249 @@ renderTrainingWall(container, dueItems) {
     }
 },
 
+_startChallengeAnsTimer() {
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
 
-/** 🎯 [Module] 挑戰模式子渲染引擎 (V2026.ULTRA.TRUE_ENDLESS) */
+    const ansLimit = state.challengeAnsTime || 5;
+    let ansLeft = ansLimit;
+
+    state.challengeAnsTimerInterval = setInterval(() => {
+        ansLeft -= 0.1;
+        const pct = Math.max(0, (ansLeft / ansLimit) * 100);
+        const bar = document.getElementById('challenge-ans-bar');
+
+        if (!bar) {
+            clearInterval(state.challengeAnsTimerInterval);
+            state.challengeAnsTimerInterval = null;
+            return;
+        }
+
+        if (state.challengeFreezing) return;
+
+        bar.style.width = pct + '%';
+        if (pct < 30) bar.style.background = '#E24B4A';
+        else if (pct < 60) bar.style.background = '#BA7517';
+        else bar.style.background = '';
+
+        if (ansLeft <= 0) {
+            clearInterval(state.challengeAnsTimerInterval);
+            state.challengeAnsTimerInterval = null;
+
+            if (!state.challengeActive) return;
+
+            const cardEl = document.querySelector('.challenge-card');
+            const activeMode = cardEl?.getAttribute('data-mode') || '讀';
+            const challengeType = cardEl?.getAttribute('data-type') || 'unknown';
+
+            if (!state.challengeSessionResults) state.challengeSessionResults = [];
+            state.challengeSessionResults.push({
+                id: state.currentChallengeItem?.id,
+                success: false,
+                mode: activeMode,
+                type: challengeType
+            });
+
+            App.submitTrainingResult(state.currentChallengeItem?.id, false);
+            uiManager.showToast('⏱️', '時間切れ！');
+            if (navigator.vibrate) navigator.vibrate(60);
+
+            state.challengeLives = Math.max(0, (state.challengeLives ?? 3) - 1);
+            App._updateLivesUI();
+
+            if (state.challengeLives <= 0) {
+                clearInterval(state.challengeTimerInterval);
+                state.challengeTimerInterval = null;
+                setTimeout(() => App.finalizeChallenge(state.challengeSessionResults), 800);
+            } else {
+                uiManager.showToast('❤️', `残り${state.challengeLives}機`);
+                if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
+                setTimeout(() => App._triggerNextChallenge(activeMode), 1000);
+            }
+        }
+    }, 100);
+},
+
+
 _renderChallengeSection(dueItems, level) {
-    // 🚀 1. 動態冷卻閾值自癒 (Dynamic Cooling Calibration)
-    // 💡 職人診斷：若總燃料少於等於 5 筆，冷卻深度降至 1 (僅不重複上一題)
-    // 若燃料充沛，則維持 10 筆冷卻，確保挑戰的多樣性。
     const coolingLimit = dueItems.length <= 5 ? 1 : 10;
     const activeRecentIds = (state.recentChallengeIds || []).slice(-coolingLimit);
 
-    // 🚀 2. 狀態分流：準備畫面 (靜態導通)
     if (!state.challengeActive) {
-        // 💡 修正：不再傳遞長度參數，實現秒開介面
-        return this._renderChallengeReadyScreen(); 
-    } 
-    
-    // 🚀 3. 戰鬥軌道：數據採樣與降壓邏輯
-    // A. 嘗試從「非近期出現」且「等級匹配」的燃料中選取
+        return this._renderChallengeReadyScreen();
+    }
+
     const filteredItems = dueItems.filter(it => {
         const isRecent = activeRecentIds.includes(it.id);
-        const levelMatch = (level === 'All' || level === '全部') || 
+        const levelMatch = (level === 'All' || level === '全部') ||
                            (String(it.level || "N3").trim().toUpperCase() === String(level).trim().toUpperCase());
         return levelMatch && !isRecent;
     });
 
-    // B. 降壓協定：若過濾後池子炸裂（空了），直接無視冷卻限制從全量等級池抓題
-    let pool = filteredItems.length > 0 ? filteredItems : dueItems.filter(it => 
-        (level === 'All' || level === '全部') || 
+    let pool = filteredItems.length > 0 ? filteredItems : dueItems.filter(it =>
+        (level === 'All' || level === '全部') ||
         (String(it.level || "N3").trim().toUpperCase() === String(level).trim().toUpperCase())
     );
-    
-    // 最終熔斷：若磁區真的空空如也，點亮空狀態
+
     if (pool.length === 0) return this._renderEmptyState(level);
 
-    // 🚀 4. 強制指針對焦 (強制點火下一題)
     if (!state.currentChallengeItem) {
         const randomIndex = Math.floor(Math.random() * pool.length);
         state.currentChallengeItem = pool[randomIndex];
-        console.log(`⚡ [Endless-Engine] 磁區對焦成功 | 池大小: ${pool.length} | 目標: ${state.currentChallengeItem.word}`);
     }
 
+    const cardHtml = this._renderChallengeCard(state.currentChallengeItem, pool);
+
+    requestAnimationFrame(() => {
+        this._startChallengeAnsTimer();
+        const q = state.currentChallengeQuestion;
+        const safeWord = state.currentChallengeSafeWord;
+        if (q?.type === 'listening' && state.challengeActive && window.audioManager) {
+            setTimeout(() => {
+                if (state.challengeActive) audioManager.speak(decodeURIComponent(safeWord));
+            }, 400);
+        }
+    });
+
+    // 命數 UI
+    const livesHtml = [1,2,3].map(i =>
+        `<i class="fa-solid fa-heart" style="font-size:15px; color:${i <= (state.challengeLives ?? 3) ? '#FF6B8A' : '#2E2E42'};"></i>`
+    ).join('');
+
+    // 連鎖進度條
+    const chainBarHtml = state.challengeChainActive ? `
+        <div style="
+            background: #2A1A1A; border-radius: 8px;
+            padding: 8px 14px; margin: 8px 0;
+            display: flex; align-items: center; gap: 10px;
+            border: 1px solid #4A2020;
+        ">
+            <i class="fa-solid fa-link" style="font-size:12px; color:#FF6B6B;"></i>
+            <span style="font-size:11px; font-weight:700; color:#FF9999;">連鎖中</span>
+            <div id="challenge-chain-progress" style="display:flex; gap:6px; flex:1; justify-content:flex-end;">
+                ${[1,2,3].map(i =>
+                    `<div style="
+                        width:28px; height:6px; border-radius:3px;
+                        background:${i <= (state.challengeChainCount || 0) ? '#FF6B6B' : '#2E2E42'};
+                        transition: background 0.3s;
+                    "></div>`
+                ).join('')}
+            </div>
+            <span style="font-size:11px; font-weight:700; color:#FF6B6B; white-space:nowrap;">全対+20秒</span>
+        </div>` : '';
+
+    // バッジ行
+    const badgeRowHtml = (state.challengeShield > 0 || state.challengeTempBoost) ? `
+        <div style="display:flex; gap:6px; flex-wrap:wrap; padding: 6px 0 0;">
+            ${state.challengeShield > 0
+                ? `<span style="background:#3A2E1A;color:#FAC775;font-size:9px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #5A4A2A;">失敗免除×${state.challengeShield}</span>`
+                : ''}
+            ${state.challengeTempBoost
+                ? `<span style="background:#1A2A3A;color:#85B7EB;font-size:9px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #2A4A6A;">解答+1秒（残${state.challengeTempBoost.left}問）</span>`
+                : ''}
+        </div>` : '';
+
     return `
-        <div id="challenge-battle-field" class="min-h-[500px] flex flex-col justify-center animate-fade-in relative">
-            
-            ${this._renderChallengeCard(state.currentChallengeItem, pool)}
-            
-            <div class="mt-12 flex flex-col items-center gap-4">
-                <div class="flex items-center gap-2 opacity-40">
-                    <div class="w-1 h-1 rounded-full bg-slate-400 animate-pulse"></div>
-                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em]">Endless Training Mode</p>
-                    <div class="w-1 h-1 rounded-full bg-slate-400 animate-pulse"></div>
+        <div id="challenge-battle-field"
+             class="animate-fade-in"
+             style="background:#13131F; margin:-16px; padding:12px 16px 100px;">
+
+            <!-- 頂部狀態列 -->
+            <div style="
+                display:flex; align-items:center; justify-content:space-between;
+                padding: 8px 4px 12px;
+            ">
+                <div style="display:flex; align-items:baseline; gap:4px;">
+                    <span style="font-size:28px; font-weight:700; color:#D4537E; font-variant-numeric:tabular-nums;" id="challenge-total-time">${state.challengeTotalTime || 60}</span>
+                    <span style="font-size:11px; font-weight:700; color:#4A4A6A;">秒</span>
                 </div>
-                
-                <button onclick="App.finalizeChallenge(state.challengeSessionResults)" 
-                        class="group flex items-center gap-3 px-8 py-3 rounded-full border border-slate-100 bg-white/50 text-slate-400 hover:text-rose-500 hover:border-rose-100 hover:shadow-lg hover:shadow-rose-50 transition-all active:scale-95">
-                    <i class="fa-solid fa-flag-checkered text-[12px] group-hover:animate-bounce"></i>
-                    <span class="text-[10px] font-black uppercase tracking-widest">停止挑戰並結算戰報</span>
+
+                <div id="challenge-lives" style="display:flex; gap:6px; align-items:center;">
+                    ${livesHtml}
+                </div>
+
+                <div style="display:flex; align-items:baseline; gap:4px;">
+                    <span style="font-size:28px; font-weight:700; color:#8888AA; font-variant-numeric:tabular-nums;">${(state.challengeSessionResults || []).filter(r => r.success).length}</span>
+                    <span style="font-size:11px; font-weight:700; color:#4A4A6A;">正解</span>
+                </div>
+            </div>
+
+            ${badgeRowHtml}
+            ${chainBarHtml}
+
+            ${cardHtml}
+
+            <div style="display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:24px;">
+                <div style="display:flex; align-items:center; gap:6px; opacity:0.3;">
+                    <div style="width:4px;height:4px;border-radius:50%;background:#8888AA;"></div>
+                    <span style="font-size:9px;font-weight:700;color:#8888AA;letter-spacing:0.3em;text-transform:uppercase;">Endless Training Mode</span>
+                    <div style="width:4px;height:4px;border-radius:50%;background:#8888AA;"></div>
+                </div>
+
+                <button onclick="App.finalizeChallenge(state.challengeSessionResults)"
+                        style="
+                            display:flex; align-items:center; gap:8px;
+                            padding: 10px 24px;
+                            background: #1E1E2E;
+                            border: 1px solid #2E2E42;
+                            border-radius: 999px;
+                            color: #4A4A6A;
+                            font-size: 10px;
+                            font-weight: 700;
+                            cursor: pointer;
+                            letter-spacing: 0.1em;
+                            text-transform: uppercase;
+                            transition: all 0.2s;
+                        "
+                        onmouseenter="this.style.borderColor='#D4537E'; this.style.color='#D4537E';"
+                        onmouseleave="this.style.borderColor='#2E2E42'; this.style.color='#4A4A6A';">
+                    <i class="fa-solid fa-flag-checkered" style="font-size:11px;"></i>
+                    停止挑戰並結算戰報
                 </button>
             </div>
         </div>`;
 },
 
 
-/** 🛑 [Private] 渲染準備開始畫面 (V2026.ULTRA.SMART_IGNITION) */
 _renderChallengeReadyScreen() {
-    // 🚀 核心修正：移除 count 依賴，封殺因數據同步導致的渲染延遲
-    // 職人診斷：確保 min-h 鎖定，防止倒數跳字時產生排版晃動
     return `
-        <div class="py-24 text-center animate-fade-in px-6">
-            <div id="countdown-display" class="mb-12 min-h-[160px] flex items-center justify-center">
-                <div class="space-y-6">
+        <div class="py-16 text-center animate-fade-in px-6">
+            <div id="countdown-display" class="mb-10 min-h-[140px] flex items-center justify-center">
+                <div class="space-y-5">
                     <div class="w-20 h-20 theme-bg rounded-3xl rotate-12 flex items-center justify-center mx-auto shadow-2xl shadow-pink-200 animate-float">
                         <span class="text-4xl text-white -rotate-12">🎯</span>
                     </div>
                     <div>
-                        <p class="text-black font-black text-2xl tracking-tight mb-2">準備好開始挑戰嗎？</p>
-                        <p class="text-slate-400 font-medium text-[11px] uppercase tracking-[0.3em] opacity-60">
-                            Linguistic Matrix Ready
-                        </p>
+                        <p class="text-black font-black text-2xl tracking-tight mb-2">挑戰模式</p>
+                        <p class="text-slate-400 font-medium text-[11px] uppercase tracking-[0.3em]">一錯即結算・時間限制60秒</p>
                     </div>
                 </div>
             </div>
-            
-            <button onclick="App.startChallengeCountdown()" 
+
+            <div class="bg-slate-50 rounded-[2rem] p-5 mb-8 text-left space-y-3 border border-slate-100">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">バフシステム</p>
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-black px-2 py-0.5 rounded-full" style="background:#FAC775;color:#412402;">伝説</span>
+                    <span class="text-[11px] text-slate-600">時間+30秒・解答時間永久+1秒・失敗免除</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-black px-2 py-0.5 rounded-full" style="background:#B5D4F4;color:#042C53;">上級</span>
+                    <span class="text-[11px] text-slate-600">時間+10秒・10問限定で解答時間+1秒</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-black px-2 py-0.5 rounded-full" style="background:#EAF3DE;color:#173404;">通常</span>
+                    <span class="text-[11px] text-slate-600">正解ボーナス・ヒント・選択肢減少など</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-black px-2 py-0.5 rounded-full" style="background:#FCEBEB;color:#501313;">弱体</span>
+                    <span class="text-[11px] text-slate-600">解答時間-1秒・時間-5秒など</span>
+                </div>
+            </div>
+
+            <button onclick="App.startChallengeCountdown()"
                     class="w-full max-w-xs py-5 theme-bg text-white rounded-[2.5rem] font-black text-sm uppercase tracking-[0.4em] shadow-xl shadow-pink-100 active:scale-95 transition-all hover:brightness-110">
                 START / 點火對焦
             </button>
-            
-            <p class="mt-8 text-[9px] text-slate-300 font-black uppercase tracking-[0.5em] opacity-40">
-                System Ignition Protocol
-            </p>
         </div>`;
 },
 
@@ -3203,148 +3439,248 @@ updateTrainingCardUI(id, isSuccess) {
     }, 500);
 },
 
-/** 🏆 [Report-View] 渲染挑戰特訓成果報告 (V2026.ULTRA.LOCALIZED) */
+/** 🏆 [Report-View] 渲染挑戰特訓成果報告 (V2026.ULTRA.V2.0 排行榜版) */
 renderChallengeReport(record) {
     const container = document.getElementById('content-container');
     if (!container) return console.error("❌ [View-Collapse] 找不到主渲染容器");
 
-    // 🚀 1. 數據洗滌：確保百分比精確對焦本次會話
     const sessionCorrect = record.sessionCorrect || 0;
     const sessionTotal = record.sessionTotal || 0;
-    const sessionAccuracy = sessionTotal > 0 
-        ? Math.round((sessionCorrect / sessionTotal) * 100) 
-        : 0;
+    const sessionAccuracy = sessionTotal > 0 ? Math.round((sessionCorrect / sessionTotal) * 100) : 0;
 
-    const isExcellent = sessionAccuracy >= 80;
-    const themeClass = isExcellent ? 'theme-bg' : 'bg-slate-800';
+    // 讀取歷史排行
+    let history = [];
+    try { history = JSON.parse(localStorage.getItem('tf_challenge_history') || '[]'); } catch(e) {}
 
-    // 🚀 2. 實體噴發：導入台灣在地化專業語境
+    // 正解數排行（前5）
+    const scoreRank = [...history]
+        .sort((a, b) => (b.sessionCorrect || 0) - (a.sessionCorrect || 0))
+        .slice(0, 5);
+
+    // 連続記録排行（前5）
+    const streakRank = [...history]
+        .sort((a, b) => (b.maxStreak || 0) - (a.maxStreak || 0))
+        .slice(0, 5);
+
+    const timeAgo = (ts) => {
+        const diff = Date.now() - ts;
+        const m = Math.floor(diff / 60000);
+        const h = Math.floor(diff / 3600000);
+        const d = Math.floor(diff / 86400000);
+        if (m < 1) return '今回';
+        if (h < 1) return m + '分前';
+        if (d < 1) return h + '時間前';
+        return d + '日前';
+    };
+
+    const renderRankRows = (list, key) => list.map((r, i) => {
+        const isNow = r.id === record.id;
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : String(i + 1);
+        const val = key === 'score' ? (r.sessionCorrect || 0) : (r.maxStreak || 0);
+        const meta = key === 'score'
+            ? 'バフ×' + (r.buffsGot || 0) + ' · 連続' + (r.maxStreak || 0) + ' · ' + (r.level || 'ALL')
+            : '正解' + (r.sessionCorrect || 0) + ' · バフ×' + (r.buffsGot || 0) + ' · ' + (r.level || 'ALL');
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--color-border-tertiary);">'
+            + '<span style="font-size:12px;width:20px;text-align:center;flex-shrink:0;color:var(--color-text-tertiary);">' + medal + '</span>'
+            + '<span style="font-size:18px;font-weight:500;width:36px;text-align:right;flex-shrink:0;color:' + (isNow ? '#993556' : 'var(--color-text-primary)') + ';">' + val + '</span>'
+            + '<span style="font-size:11px;color:var(--color-text-secondary);flex:1;">' + meta + '</span>'
+            + '<span style="font-size:10px;padding:1px 7px;border-radius:20px;flex-shrink:0;background:' + (isNow ? '#FBEAF0' : 'var(--color-background-secondary)') + ';color:' + (isNow ? '#993556' : 'var(--color-text-tertiary)') + ';">' + timeAgo(r.timestamp) + '</span>'
+            + '</div>';
+    }).join('');
+
     container.innerHTML = `
-        <div class="max-w-2xl mx-auto px-6 py-12 animate-bounce-in">
-            <div class="bg-white rounded-[3.5rem] shadow-2xl overflow-hidden border border-slate-50 relative">
-                
-                <div class="${themeClass} p-12 text-center text-white relative transition-colors duration-700">
-                    <p class="text-[10px] font-black opacity-60 uppercase tracking-[0.4em] mb-3">Training Performance</p>
-                    <h3 class="text-8xl font-black tabular-nums tracking-tighter leading-none">${sessionAccuracy}%</h3>
-                    
-                    <div class="mt-6 inline-flex items-center gap-3 px-6 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/10">
-                        <span class="text-[10px] font-black tracking-widest uppercase">
-                            達成項目：${sessionCorrect} / ${sessionTotal}
-                        </span>
-                        <div class="w-px h-3 bg-white/30"></div>
-                        <span class="text-[10px] font-black tracking-widest uppercase">
-                            JLPT ${String(record.level).toUpperCase()}
-                        </span>
-                    </div>
+        <div class="animate-fade-in pb-32">
 
-                    <div class="absolute -bottom-4 -right-4 opacity-10 text-9xl font-black italic select-none pointer-events-none uppercase">
-                        ${record.level}
-                    </div>
-                </div>
-
-                <div class="p-10 space-y-10">
-                    <div class="grid grid-cols-2 gap-6">
-                        <div class="text-center p-6 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner">
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">聽力辨識 / Audio</p>
-                            <span class="text-3xl font-black text-slate-800 tabular-nums">
-                                ${record.audioStats?.correct || 0} <span class="text-sm text-slate-400 font-medium">/ ${record.audioStats?.total || 0}</span>
-                            </span>
-                        </div>
-                        <div class="text-center p-6 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner">
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">文字識讀 / Visual</p>
-                            <span class="text-3xl font-black text-slate-800 tabular-nums">
-                                ${record.visualStats?.correct || 0} <span class="text-sm text-slate-400 font-medium">/ ${record.visualStats?.total || 0}</span>
-                            </span>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="flex justify-between items-end mb-4 px-1">
-                            <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Stability Tracker</p>
-                            <span class="text-[9px] font-bold text-slate-300 uppercase">全域穩定度：${record.accuracy || 0}%</span>
-                        </div>
-                        <div class="flex items-end gap-1.5 h-16 px-1">
-                            ${this._renderMiniHistory ? this._renderMiniHistory() : '<div class="h-[1px] w-full bg-slate-100"></div>'}
-                        </div>
-                    </div>
-
-                    <button onclick="App.navigateTo('training')" 
-                            class="w-full py-6 theme-bg text-white rounded-[2.5rem] font-black text-sm uppercase tracking-[0.4em] shadow-[0_20px_50px_rgba(244,63,94,0.3)] active:scale-[0.98] transition-all hover:brightness-110 hover:shadow-[0_20px_60px_rgba(244,63,94,0.4)]">
-                        返回整備中心
-                    </button>
-                    
-                    <p class="text-center text-[9px] text-slate-300 font-bold uppercase tracking-widest">
-                        數據識別碼：${record.id}
-                    </p>
+            <div style="background:linear-gradient(160deg,#FBEAF0 0%,#FDF0F5 100%);padding:24px 16px 20px;text-align:center;border-radius:0 0 24px 24px;margin-bottom:14px;">
+                <p style="font-size:11px;font-weight:500;color:#993556;margin:0 0 6px;letter-spacing:0.1em;text-transform:uppercase;">Challenge Complete</p>
+                <p style="font-size:52px;font-weight:500;color:#1e293b;margin:0;line-height:1;">${sessionCorrect}</p>
+                <p style="font-size:13px;color:var(--color-text-secondary);margin:4px 0 14px;">問正解</p>
+                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                    <span style="background:white;border:0.5px solid #F4C0D1;color:#993556;font-size:11px;padding:4px 12px;border-radius:20px;">JLPT ${String(record.level || 'ALL').toUpperCase()}</span>
+                    <span style="background:white;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);font-size:11px;padding:4px 12px;border-radius:20px;">60秒モード</span>
+                    <span style="background:white;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);font-size:11px;padding:4px 12px;border-radius:20px;">${sessionAccuracy}%</span>
                 </div>
             </div>
-        </div>
-    `;
 
-    // 🚀 3. 職人震動序列
+            <div style="padding:0 12px;">
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+                    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;text-align:center;">
+                        <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px;">最長連続</p>
+                        <p style="font-size:22px;font-weight:500;color:var(--color-text-primary);margin:0;">${record.maxStreak || 0}</p>
+                    </div>
+                    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;text-align:center;">
+                        <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px;">バフ獲得</p>
+                        <p style="font-size:22px;font-weight:500;color:var(--color-text-primary);margin:0;">${record.buffsGot || 0}</p>
+                    </div>
+                    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;text-align:center;">
+                        <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px;">聽力</p>
+                        <p style="font-size:20px;font-weight:500;color:var(--color-text-primary);margin:0;">${record.audioStats?.correct || 0} <span style="font-size:12px;color:var(--color-text-secondary);">/ ${record.audioStats?.total || 0}</span></p>
+                    </div>
+                    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;text-align:center;">
+                        <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px;">文字識讀</p>
+                        <p style="font-size:20px;font-weight:500;color:var(--color-text-primary);margin:0;">${record.visualStats?.correct || 0} <span style="font-size:12px;color:var(--color-text-secondary);">/ ${record.visualStats?.total || 0}</span></p>
+                    </div>
+                </div>
+
+                <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);margin-bottom:10px;overflow:hidden;">
+                    <div style="display:flex;border-bottom:0.5px solid var(--color-border-tertiary);">
+                        <div id="tab-btn-score" onclick="window._crSwitchTab('score')"
+                             style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:500;cursor:pointer;color:#993556;border-bottom:2px solid #D4537E;">
+                            正解數排行
+                        </div>
+                        <div id="tab-btn-streak" onclick="window._crSwitchTab('streak')"
+                             style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:500;cursor:pointer;color:var(--color-text-secondary);border-bottom:2px solid transparent;">
+                            連続記録
+                        </div>
+                    </div>
+                    <div style="padding:4px 14px 8px;">
+                        <div id="cr-tab-score">${renderRankRows(scoreRank, 'score')}</div>
+                        <div id="cr-tab-streak" style="display:none;">${renderRankRows(streakRank, 'streak')}</div>
+                    </div>
+                </div>
+
+                <button onclick="App.startChallengeCountdown()"
+                        style="width:100%;padding:14px;background:#FBEAF0;border:0.5px solid #F4C0D1;border-radius:var(--border-radius-lg);color:#993556;font-size:13px;font-weight:500;cursor:pointer;margin-bottom:8px;">
+                    もう一度挑戦
+                </button>
+                <button onclick="App.navigateTo('training')"
+                        style="width:100%;padding:12px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);color:var(--color-text-secondary);font-size:13px;cursor:pointer;">
+                    整備中心へ戻る
+                </button>
+            </div>
+        </div>`;
+
+    // Tab 切換
+    window._crSwitchTab = (tab) => {
+        document.getElementById('cr-tab-score').style.display = tab === 'score' ? 'block' : 'none';
+        document.getElementById('cr-tab-streak').style.display = tab === 'streak' ? 'block' : 'none';
+        document.getElementById('tab-btn-score').style.color = tab === 'score' ? '#993556' : 'var(--color-text-secondary)';
+        document.getElementById('tab-btn-score').style.borderBottomColor = tab === 'score' ? '#D4537E' : 'transparent';
+        document.getElementById('tab-btn-streak').style.color = tab === 'streak' ? '#993556' : 'var(--color-text-secondary)';
+        document.getElementById('tab-btn-streak').style.borderBottomColor = tab === 'streak' ? '#D4537E' : 'transparent';
+    };
+
     if (navigator.vibrate) {
-        if (isExcellent) navigator.vibrate([30, 50, 30, 100, 50]);
+        if (sessionAccuracy >= 80) navigator.vibrate([30, 50, 30, 100, 50]);
         else navigator.vibrate([50, 100]);
     }
 },
 
-
-/** 🧪 [Challenge] 渲染挑戰模式卡片 (V2026.ULTRA.Acoustic_Shield) */
 _renderChallengeCard(item, allItems) {
-    // 🚀 1. 物理安全隔離：封殺損毀數據
     if (!this._isValidChallengeFuel(item)) {
         return this._renderFuelErrorState(item);
     }
-
-    // 🚀 2. 數據洗滌與自癒協定
     const { safeWord } = this._sanitizeChallengeFuel(item);
-
-    // 🚀 3. 題型點火
     const q = challengeEngine.generateChallenge(item, allItems);
     const cardId = `challenge-${item.id}`;
     const modeFingerprint = q.type === 'listening' ? '聽' : '讀';
+    state.currentChallengeQuestion = q;
+    state.currentChallengeSafeWord = safeWord;
 
-    // 🚀 4. 聲學直連噴發 (關鍵修正)
-    if (q.type === 'listening' && state.challengeActive) {
-        // 💡 職人診斷：避開 App.speak 以封殺 Toast UI 競爭，直接對準語音總線
-        setTimeout(() => {
-            // 🔒 雙重校準：確保播放瞬間使用者尚未手動退出挑戰
-            if (state.challengeActive && window.audioManager) {
-                console.log(`📢 [Acoustic-Weld] 直連噴發對焦: ${safeWord}`);
-                // 執行 URL 解碼後直接送往底層播報
-                window.audioManager.speak(decodeURIComponent(safeWord));
-            }
-        }, 400); // 稍微拉長至 400ms，確保 DOM 重繪線程已完全釋放
-    }
-
-    // 🚀 5. 實體地基渲染
     try {
         return `
-            <div id="${cardId}" 
-                 data-mode="${modeFingerprint}" 
+            <div id="${cardId}"
+                 data-mode="${modeFingerprint}"
                  data-type="${q.type}"
-                 class="challenge-card relative bg-white border border-slate-50 rounded-[3rem] p-8 shadow-2xl max-w-[340px] mx-auto mb-10 overflow-hidden animate-slide-up">
-                
-                <div class="absolute top-0 left-0 h-1.5 theme-bg w-full origin-left animate-timer-shrink"></div>
-                
-                <div class="text-center mt-6">
-                    <span class="px-4 py-1 bg-slate-50 text-slate-400 text-[9px] font-black rounded-full border border-slate-100 uppercase tracking-widest">
-                        ${q.title || '對焦挑戰'}
-                    </span>
+                 class="challenge-card relative rounded-[3rem] p-6 max-w-[340px] mx-auto mb-4 overflow-hidden animate-slide-up"
+                 style="background:#1E1E2E; border: 1px solid #2E2E42; box-shadow: 0 20px 60px rgba(0,0,0,0.4);">
+
+                <!-- 答題倒數進度條 -->
+                <div class="absolute top-0 left-0 h-1.5 w-full" style="background:#2E2E42;">
+                    <div id="challenge-ans-bar" class="h-full origin-left transition-none" style="width:100%; background:#D4537E;"></div>
                 </div>
 
+                <!-- 題型標籤 -->
+                <div class="text-center mt-6">
+                    <span style="
+                        display: inline-block;
+                        padding: 4px 16px;
+                        background: #2E2E42;
+                        color: #8888AA;
+                        font-size: 9px;
+                        font-weight: 700;
+                        border-radius: 999px;
+                        letter-spacing: 0.15em;
+                        text-transform: uppercase;
+                    ">${q.title || '對焦挑戰'}</span>
+                </div>
+
+                <!-- 主題槽 -->
                 <div class="text-center py-12 min-h-[180px] flex flex-col justify-center">
                     ${this._renderChallengeMainSlot(q, safeWord)}
                 </div>
 
+                <!-- 選項 -->
                 <div class="grid grid-cols-1 gap-3">
                     ${this._renderChallengeOptions(q, item.id)}
                 </div>
             </div>`;
     } catch (e) {
-        console.error("❌ [Render-Collapse] 視圖衛星斷路:", e);
+        console.error("❌ [Render-Collapse]:", e);
         return this._renderFuelErrorState(item);
     }
+},
+
+
+_startChallengeAnsTimer() {
+    // 🚀 1. 先清除舊計時器，防止堆疊
+    clearInterval(state.challengeAnsTimerInterval);
+    state.challengeAnsTimerInterval = null;
+
+    const ansLimit = state.challengeAnsTime || 5;
+    let ansLeft = ansLimit;
+
+    state.challengeAnsTimerInterval = setInterval(() => {
+        ansLeft -= 0.1;
+        const pct = Math.max(0, (ansLeft / ansLimit) * 100);
+        const bar = document.getElementById('challenge-ans-bar');
+
+        // 🛡️ 若 bar 不存在代表已換頁，直接清除計時器
+        if (!bar) {
+            clearInterval(state.challengeAnsTimerInterval);
+            state.challengeAnsTimerInterval = null;
+            return;
+        }
+
+        bar.style.width = pct + '%';
+        if (pct < 30) bar.style.background = '#E24B4A';
+        else if (pct < 60) bar.style.background = '#BA7517';
+        else bar.style.background = '';
+
+        if (ansLeft <= 0) {
+            clearInterval(state.challengeAnsTimerInterval);
+            state.challengeAnsTimerInterval = null;
+
+            if (!state.challengeActive) return;
+
+            const cardEl = document.querySelector('.challenge-card');
+            const activeMode = cardEl?.getAttribute('data-mode') || '讀';
+            const challengeType = cardEl?.getAttribute('data-type') || 'unknown';
+
+            if (!state.challengeSessionResults) state.challengeSessionResults = [];
+            state.challengeSessionResults.push({
+                id: state.currentChallengeItem?.id,
+                success: false,
+                mode: activeMode,
+                type: challengeType
+            });
+
+            App.submitTrainingResult(state.currentChallengeItem?.id, false);
+            uiManager.showToast('⏱️', '時間切れ！');
+            if (navigator.vibrate) navigator.vibrate(60);
+
+            if (state.challengeShield > 0) {
+                state.challengeShield--;
+                uiManager.showToast('🛡️', '失敗免除発動！');
+                setTimeout(() => App._triggerNextChallenge(activeMode), 800);
+            } else {
+                clearInterval(state.challengeTimerInterval);
+                state.challengeTimerInterval = null;
+                setTimeout(() => App.finalizeChallenge(state.challengeSessionResults), 800);
+            }
+        }
+    }, 100);
 },
 
 /** 🛡️ [Sub-Function] A：燃料完整性檢查 */
@@ -3368,38 +3704,57 @@ _sanitizeChallengeFuel(item) {
     };
 },
 
-/** 🛡️ [Sub-Function] C：主槽位渲染分流 (聽力 vs 文字) */
 _renderChallengeMainSlot(q, safeWord) {
     if (q.type === 'listening') {
         return `
             <button onclick="App.speak('${safeWord}')" 
-                    class="w-24 h-24 bg-rose-500 text-white rounded-full flex items-center justify-center mx-auto shadow-xl active:scale-90 transition-all group/mic">
-                <i class="fa-solid fa-volume-high text-4xl group-active/mic:scale-110"></i>
+                    class="w-24 h-24 rounded-full flex items-center justify-center mx-auto shadow-xl active:scale-90 transition-all group/mic"
+                    style="background:#D4537E;">
+                <i class="fa-solid fa-volume-high text-4xl text-white group-active/mic:scale-110"></i>
             </button>`;
     }
-    return `<h3 class="text-3xl font-black text-slate-800 leading-tight tracking-tight">${q.content || '數據加載中'}</h3>`;
+    return `<h3 style="font-size:2rem; font-weight:700; color:#F0F0FF; line-height:1.3; letter-spacing:-0.02em;">${q.content || '數據加載中'}</h3>`;
 },
 
-/** 🛡️ [Sub-Function] D：選項列表物理洗滌渲染 */
+
 _renderChallengeOptions(q, itemId) {
     if (!q.options || !Array.isArray(q.options)) return '';
-    
+
     return q.options.map((opt, i) => {
-        // 🚀 核心防禦：對每個選項執行物理轉義，封殺單引號造成的 HTML 語法中斷
         const cleanOpt = String(opt || "").replace(/'/g, "\\'").replace(/"/g, "&quot;");
         const cleanCorrect = String(q.correct || "").replace(/'/g, "\\'").replace(/"/g, "&quot;");
-        
+
         return `
             <button onclick="App.checkChallenge('${itemId}', '${cleanOpt}', '${cleanCorrect}')"
-                    class="w-full p-5 rounded-2xl bg-slate-50 border border-slate-100 text-slate-700 font-bold text-[14px] active:scale-95 transition-all text-left flex items-center gap-4 hover:bg-white hover:shadow-lg group/opt">
-                <span class="w-7 h-7 shrink-0 rounded-full bg-white border border-slate-200 text-slate-300 text-[10px] font-black flex items-center justify-center group-hover/opt:theme-bg group-hover/opt:text-white group-hover/opt:border-transparent transition-all">
-                    ${i + 1}
-                </span>
-                <span class="flex-1 leading-snug">${opt}</span>
+                    style="
+                        width: 100%; padding: 16px 20px;
+                        background: #2A2A3E;
+                        border: 1px solid #3A3A52;
+                        border-radius: 16px;
+                        color: #D0D0F0;
+                        font-size: 14px;
+                        font-weight: 500;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        gap: 14px;
+                        text-align: left;
+                        transition: all 0.15s;
+                    "
+                    onmouseenter="this.style.background='#32324A'; this.style.borderColor='#D4537E';"
+                    onmouseleave="this.style.background='#2A2A3E'; this.style.borderColor='#3A3A52';">
+                <span style="
+                    width: 28px; height: 28px; flex-shrink: 0;
+                    border-radius: 50%;
+                    background: #1E1E2E;
+                    border: 1px solid #3A3A52;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 11px; font-weight: 700; color: #8888AA;
+                ">${i + 1}</span>
+                <span style="flex:1; line-height:1.4;">${opt}</span>
             </button>`;
     }).join('');
 },
-
 /** 🛡️ [Sub-Function] E：損毀燃料降壓處理 */
 _renderFuelErrorState(item) {
     console.warn(`⚠️ [Fuel-Repair] 執行磁區自動重排: ${item?.id || 'Unknown ID'}`);
@@ -3434,51 +3789,93 @@ _renderMiniHistory() {
     // 負責：精煉單字卡、翻譯紀錄卡、空值狀態、AI 指令按鈕
     // ============================================================
 
-/** 🎴 核心組件：翻譯紀錄卡片 (V2026.ULTRA 穩壓版) */
-    renderTranslateCard(item, idx, currentLang) {
-        // 🚀 物理導通證明：將 App.speakLanguage 修正為 App.speak
-        // 此處為之前換 PC 報錯的關鍵斷路點
-        const rubyHtml = this._generateRubyHtml(item);
-        const recordId = item.id || `trans-${idx}`;
+renderTranslateCard(item, idx, currentLang) {
+    const rubyHtml = this._generateRubyHtml(item);
+    const recordId = item.id || `trans-${idx}`;
 
-        return `
-        <div class="bg-white rounded-[2.5rem] p-8 border border-slate-50 shadow-sm hover:shadow-md transition-all group relative animate-fade-in mb-5 overflow-visible">
-            <div class="absolute -top-3 right-6 flex items-center gap-2 z-30">
-                <div class="flex items-center gap-1 bg-white border border-slate-100 px-2 py-1.5 rounded-2xl shadow-md">
-                    <button onclick="event.stopPropagation(); App.activeTranslationEngine.toggleEditTranslate('${recordId}')" 
-                            class="w-7 h-7 rounded-lg text-slate-300 hover:text-blue-400 flex items-center justify-center transition-all active:scale-90">
-                        <i class="fa-solid fa-pen-to-square text-[9px]"></i>
-                    </button>
-                    <div class="w-[1px] h-3 bg-slate-100"></div>
-                    <button onclick="event.stopPropagation(); App.activeTranslationEngine.deleteTranslateItem('${recordId}')" 
-                            class="w-7 h-7 rounded-lg text-slate-300 hover:text-red-400 flex items-center justify-center transition-all active:scale-90">
-                        <i class="fa-solid fa-trash-can text-[9px]"></i>
-                    </button>
-                    <div class="w-[1px] h-3 bg-slate-100"></div>
-                    <button onclick="event.stopPropagation(); App.speak('${(item.a || item.翻譯 || "").replace(/'/g, "\\'")}')" 
-                            class="w-7 h-7 rounded-lg text-slate-400 hover:theme-text-pink flex items-center justify-center transition-all active:scale-90">
-                        <i class="fa-solid fa-volume-high text-[10px]"></i>
-                    </button>
-                </div>
-            </div>
+    return `
+    <div style="
+        background: white; border-radius: 14px;
+        border: 0.5px solid #E2E8F0; overflow: hidden;
+        margin-bottom: 10px; transition: border-color 0.2s;
+    " class="animate-fade-in"
+    onmouseenter="this.style.borderColor='#F4C0D1'"
+    onmouseleave="this.style.borderColor='#E2E8F0'">
 
-            <div class="space-y-4 relative z-10 pt-2">
-                <p class="text-[11px] font-black text-slate-400 tracking-wide flex items-center gap-2">
-                    <span class="w-1.5 h-1.5 rounded-full theme-bg shadow-[0_0_8px_var(--theme-primary)]"></span>
-                    ${item.q || item.原文}
-                </p>
-                <h4 class="text-[1.4rem] font-black text-slate-800 leading-[2.2] tracking-normal">${rubyHtml}</h4>
-            </div>
+        <!-- 操作按鈕列 -->
+        <div style="
+            display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+            padding: 8px 12px 0;
+        ">
+            <button onclick="event.stopPropagation(); App.activeTranslationEngine.toggleEditTranslate('${recordId}')"
+                    style="
+                        width: 28px; height: 28px; border-radius: 7px; border: none; cursor: pointer;
+                        background: #F1EFE8; color: #5F5E5A;
+                        display: flex; align-items: center; justify-content: center;
+                        transition: all 0.2s;
+                    "
+                    onmouseenter="this.style.background='#E6F1FB';this.style.color='#185FA5'"
+                    onmouseleave="this.style.background='#F1EFE8';this.style.color='#5F5E5A'">
+                <i class="fa-solid fa-pen-to-square" style="font-size: 10px;"></i>
+            </button>
+            <button onclick="event.stopPropagation(); App.activeTranslationEngine.deleteTranslateItem('${recordId}')"
+                    style="
+                        width: 28px; height: 28px; border-radius: 7px; border: none; cursor: pointer;
+                        background: #F1EFE8; color: #B4B2A9;
+                        display: flex; align-items: center; justify-content: center;
+                        transition: all 0.2s;
+                    "
+                    onmouseenter="this.style.background='#FCEBEB';this.style.color='#E24B4A'"
+                    onmouseleave="this.style.background='#F1EFE8';this.style.color='#B4B2A9'">
+                <i class="fa-solid fa-trash-can" style="font-size: 10px;"></i>
+            </button>
+            <button onclick="event.stopPropagation(); App.speak('${(item.a || item.翻譯 || "").replace(/'/g, "\\'")}')"
+                    style="
+                        width: 28px; height: 28px; border-radius: 7px; border: none; cursor: pointer;
+                        background: #FBEAF0; color: #D4537E;
+                        display: flex; align-items: center; justify-content: center;
+                        transition: all 0.2s;
+                    ">
+                <i class="fa-solid fa-volume-high" style="font-size: 10px;"></i>
+            </button>
+        </div>
 
-            <div class="flex justify-between items-center mt-6 pt-4 border-t border-slate-50/80">
-                <span class="bg-slate-50 text-slate-400 text-[8px] font-black px-3 py-1.5 rounded-xl uppercase tracking-widest border border-slate-100">
-                    ${item.category || '一般'}
-                </span>
-                <span class="text-[8px] font-bold text-slate-200 uppercase tabular-nums tracking-widest">Secured via Refinery</span>
-            </div>
-        </div>`;
-    },
+        <!-- 內容區 -->
+        <div style="padding: 8px 16px 14px;">
+            <p style="
+                font-size: 11px; font-weight: 700; color: #888780;
+                display: flex; align-items: center; gap: 6px; margin: 0 0 8px;
+            ">
+                <span style="
+                    width: 6px; height: 6px; border-radius: 50%;
+                    background: #D4537E; flex-shrink: 0;
+                "></span>
+                ${item.q || item.原文 || ''}
+            </p>
+            <div style="
+                font-size: 20px; font-weight: 800; color: #1a1a1a;
+                line-height: 2; word-break: break-word;
+            ">${rubyHtml}</div>
+        </div>
 
+        <!-- 底部標籤 -->
+        <div style="
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 16px;
+            border-top: 0.5px solid #E2E8F0;
+            background: #FAFAFA;
+        ">
+            <span style="
+                font-size: 9px; font-weight: 700;
+                color: #993556; background: #FBEAF0;
+                border-radius: 4px; padding: 2px 6px;
+            ">${item.category || '一般'}</span>
+            <span style="font-size: 9px; font-weight: 600; color: #B4B2A9;">
+                <i class="fa-solid fa-lock" style="font-size: 8px; margin-right: 3px;"></i>已存檔
+            </span>
+        </div>
+    </div>`;
+},
 
 /** 🧬 子組件：渲染翻譯卡片清單 (V2026.ULTRA 視覺全導通版) */
 _renderTranslateCards(items, activeCategory = '全部') {
@@ -3513,32 +3910,78 @@ _renderTranslateCards(items, activeCategory = '全部') {
             return translationView._renderArticlePackageWithTabs(item);
         }
 
-        // 🎯 B 軌道：一般即時記錄 (單句卡片)
-        // 💡 核心焊接：動態獲取樣式數據 (Icon 與 Color)
-        const style = translationView._getCategoryStyle(item.category || '一般');
-        const rubyHtml = translationView._generateRubyHtml(item); 
+// 🎯 B 軌道：一般即時記錄 (單句卡片)
+const style = translationView._getCategoryStyle(item.category || '一般');
+const rubyHtml = translationView._generateRubyHtml(item);
+return `
+<div style="
+    background: white; border-radius: 14px;
+    border: 0.5px solid #E2E8F0; overflow: hidden;
+    margin-bottom: 10px; transition: border-color 0.2s;
+" class="animate-fade-in"
+onmouseenter="this.style.borderColor='#F4C0D1'"
+onmouseleave="this.style.borderColor='#E2E8F0'">
 
-        return `
-        <div class="bg-white rounded-[2.5rem] border border-slate-50 shadow-sm hover:shadow-md transition-all group relative animate-fade-in mb-5 overflow-hidden">
-            <div onclick="App.speak('${(item.a || item.翻譯 || "").replace(/'/g, "\\'")}')" 
-                 class="p-8 pb-14 space-y-4 cursor-pointer relative z-10 active:bg-slate-50/50 transition-colors">
-                
-                <p class="text-[11px] font-black text-slate-400 tracking-wide flex items-center gap-2">
-                    <span class="w-1.5 h-1.5 rounded-full theme-bg shadow-[0_0_8px_var(--theme-primary)]"></span>
-                    ${item.q || item.原文}
-                </p>
-                
-                <h4 class="text-[1.4rem] font-black text-slate-800 leading-[2.4] tracking-normal">
-                    ${rubyHtml}
-                </h4>
-            </div>
+    <div style="padding: 14px 16px 10px;">
 
-            <div class="absolute bottom-5 right-8 z-20">
-                <span class="text-[8px] font-black px-3 py-1.5 rounded-xl uppercase tracking-widest border ${style.color}">
-                    ${style.icon} ${item.category || '一般'}
-                </span>
-            </div>
-        </div>`;
+        <!-- 分類標籤 -->
+        <span style="
+            font-size: 9px; font-weight: 800; font-style: italic;
+            color: #993556; background: #FBEAF0;
+            border-radius: 4px; padding: 1px 6px;
+            letter-spacing: 0.03em;
+        ">${style.icon} ${item.category || '一般'}</span>
+
+        <!-- 原文大字 -->
+        <div style="
+            font-size: 16px; font-weight: 700; color: #1a1a1a;
+            line-height: 2.4; margin: 8px 0 0;
+            word-break: break-word;
+        ">${rubyHtml}</div>
+
+        <!-- 譯文粉紅左邊框 -->
+        <div style="
+            margin-top: 10px; padding-left: 10px;
+            border-left: 3px solid #F4C0D1;
+        ">
+            <p style="
+                font-size: 13px; font-weight: 500;
+                color: #D4537E; line-height: 1.75; margin: 0;
+            ">${item.q || item.原文 || ''}</p>
+        </div>
+
+        <!-- 底部按鈕 -->
+<div style="display: flex; align-items: center; gap: 6px; margin-top: 12px;">
+    <button onclick="App.speak('${(item.a || item.翻譯 || "").replace(/<[^>]*>/g, "").replace(/\s+/g, "").replace(/'/g, "\\'")}')"
+            style="
+                display: inline-flex; align-items: center; gap: 5px;
+                font-size: 11px; font-weight: 700; color: #5F5E5A;
+                background: #F1EFE8; border: none; border-radius: 6px;
+                padding: 5px 10px; cursor: pointer;
+            ">
+        <i class="fa-solid fa-volume-high" style="font-size: 10px;"></i> 朗讀
+    </button>
+    <button onclick="event.stopPropagation(); translationEngine.editContextualItem('${item.id}')"
+        style="
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 11px; font-weight: 700; color: #185FA5;
+            background: #E6F1FB; border: none; border-radius: 6px;
+            padding: 5px 10px; cursor: pointer;
+        ">
+    <i class="fa-solid fa-pen-to-square" style="font-size: 10px;"></i> 編輯
+</button>
+<button onclick="event.stopPropagation(); App.activeTranslationEngine.deleteArticleRecord('${item.id || ''}')"
+        style="
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 11px; font-weight: 700; color: #E24B4A;
+            background: #FCEBEB; border: none; border-radius: 6px;
+            padding: 5px 10px; cursor: pointer;
+        ">
+    <i class="fa-solid fa-trash" style="font-size: 10px;"></i> 刪除
+</button>
+</div>
+    </div>
+</div>`;
     }).join('');
 },
 
