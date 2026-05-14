@@ -3498,65 +3498,56 @@ syncTranslateAiPrompt(val) {
 
 /** 🎙️ 語音模組對焦：即時搶佔版 (封殺聲音重疊) */
 changeVoice(voiceId) {
-    // 1. 物理洗滌與磁區固化
     const cleanId = typeof voiceId === 'string' ? voiceId.trim() : voiceId;
     if (!cleanId) return;
 
-    // 🚀 核心焊接 A：即時熔斷 (Preemptive Strike)
-    // 在切換瞬間，物理切斷所有正在播放的語音執行緒
     this.stopAllSpeech();
-
     localStorage.setItem('tf_voice_id', cleanId);
-    
-    // 🚀 核心焊接 B：物理標籤偵測
+
     const isEN = cleanId.startsWith('en-');
-    
-    // 2. 樣本語義對焦
+
     const samples = {
         'JP': "設定を変更しました。この声でよろしいですか？",
         'EN': "Voice updated. Is this voice setting okay for you?"
     };
     const sampleText = isEN ? samples['EN'] : samples['JP'];
 
-    // 3. 視覺與觸覺回饋
     uiManager.showToast('🎙️', `對焦聲線: ${cleanId}`);
     if (navigator.vibrate) navigator.vibrate(10);
-    
+
+    // 🚀 視覺連動：更新聲線描述顯示
+    const selected = (CONFIG?.VOICE_LIST || []).find(v => v.id === cleanId);
+    const descEl = document.getElementById('voice-desc-display');
+    if (descEl && selected) descEl.textContent = selected.desc;
+
     console.log(`📡 [Acoustic-Dispatch] 引擎導向: ${isEN ? 'EN_Manager' : 'JP_Manager'} | ID: ${cleanId}`);
 
-    // 🚀 4. 關鍵物理分流：縮短延遲至 50ms 達成即時體感
-    setTimeout(() => {
-        if (isEN) {
-            // 🇺🇸 導通英文發動機
-            if (window.en_audioManager && typeof window.en_audioManager.speak === 'function') {
-                window.en_audioManager.speak(sampleText);
-            }
-        } else {
-            // 🇯🇵 導通日文發動機
-            if (window.audioManager && typeof window.audioManager.speak === 'function') {
-                window.audioManager.speak(sampleText);
-            }
+setTimeout(() => {
+    if (isEN) {
+        if (window.en_audioManager) {
+            window.en_audioManager.speak(sampleText);
         }
-    }, 50); 
+    } else {
+        if (window.audioManager?.speakWithVoice) {
+            // 🚀 直接指定選取的聲線，不走角色識別
+            window.audioManager.speakWithVoice(sampleText, cleanId);
+        }
+    }
+}, 50);
 },
 
 /** 🚀 [Manual-Acoustic] 手動聲學控制協定 (V2026.ULTRA 導通修正版) */
 playCurrentSample() {
-    // 1. 物理清理舊定時器
-    if (window.TF_SAMPLE_TIMER) {
-        clearTimeout(window.TF_SAMPLE_TIMER);
-    }
+    if (window.TF_SAMPLE_TIMER) clearTimeout(window.TF_SAMPLE_TIMER);
 
-    // 🚀 關鍵焊接：先執行物理熔斷(清空舊聲音)，隨後立即「解除鎖定」
-    this.stopAllSpeech(); 
-    
-    // 💡 職人診斷：熔斷後必須手動恢復導通狀態，否則下方的 setTimeout 會被攔截
+    this.stopAllSpeech();
     window.EN_AUDIO_STOP_SIGNAL = false;
     window.JP_AUDIO_STOP_SIGNAL = false;
 
-    const voiceId = localStorage.getItem('tf_voice_id');
-    const settingLang = localStorage.getItem('tf_setting_voice_lang') || 'JP';
-    const isEN = voiceId?.startsWith('en-') || (settingLang === 'EN');
+    // 🚀 優先讀取 select 當前選取值，fallback 才讀 localStorage
+    const selectEl = document.querySelector('#voice-picker-select');
+    const voiceId = selectEl?.value || localStorage.getItem('tf_voice_id') || 'ja-JP-Chirp3-HD-Iapetus';
+    const isEN = voiceId.startsWith('en-');
 
     const samples = {
         'JP': "設定を確認します。この声でよろしいですか？",
@@ -3565,7 +3556,6 @@ playCurrentSample() {
     const sampleText = isEN ? samples['EN'] : samples['JP'];
 
     window.TF_SAMPLE_TIMER = setTimeout(() => {
-        // 這裡的檢查依然保留，防禦的是「按下試聽後又立刻按停止」的情況
         if (window.EN_AUDIO_STOP_SIGNAL === true || window.JP_AUDIO_STOP_SIGNAL === true) {
             console.warn("⚠️ [Acoustic-Bus] 播放攔截：偵測到中斷指令，取消本次發聲");
             return;
@@ -3574,9 +3564,10 @@ playCurrentSample() {
         if (isEN) {
             window.en_audioManager?.speak(sampleText);
         } else {
-            window.audioManager?.speak(sampleText);
+            // 🚀 直接指定 select 選取的聲線，不走角色識別雜湊
+            window.audioManager?.speakWithVoice(sampleText, voiceId);
         }
-        
+
         window.TF_SAMPLE_TIMER = null;
     }, 50);
 },
@@ -6149,15 +6140,45 @@ openAIPlannerSettings() {
         </button>`;
     App.modalCreate('ai-planner-modal', 'AI 行程規劃設定', content, actions);
 
-    // 預設選取飯店起訖（若有飯店）
     const hasHotel = trip.hotels?.[0];
     App._plannerState = {
         depType: hasHotel ? 'hotel' : 'ai',
         daysMode: 'full',
         selectedCards,
-        trip
+        trip,
+        mustGoIds: new Set(), // 🚀 每次開啟重置，避免殘留上次狀態
+        spreadMode: false     // 🚀 同樣重置
     };
 },
+
+
+_filterMustGoList(query) {
+    const keyword = query.trim().toLowerCase();
+    const items = document.querySelectorAll('#mustgo-list [id^="mustgo-card-"]');
+    
+    items.forEach(item => {
+        const name = item.querySelector('p')?.textContent?.toLowerCase() || '';
+        item.style.display = (!keyword || name.includes(keyword)) ? 'flex' : 'none';
+    });
+
+    // 🚀 無結果提示
+    const list = document.getElementById('mustgo-list');
+    const noResult = document.getElementById('mustgo-no-result');
+    const hasVisible = [...items].some(i => i.style.display !== 'none');
+
+    if (!hasVisible) {
+        if (!noResult) {
+            const el = document.createElement('p');
+            el.id = 'mustgo-no-result';
+            el.style.cssText = 'font-size: 12px; color: #94A3B8; text-align: center; padding: 16px 0; margin: 0;';
+            el.textContent = '找不到相關景點';
+            list.appendChild(el);
+        }
+    } else {
+        noResult?.remove();
+    }
+},
+
 
 // 🤖 AI 規劃器：執行複製 prompt
 async executeAIPlanner() {
@@ -6167,20 +6188,44 @@ async executeAIPlanner() {
     const cardLimit = parseInt(document.getElementById('planner-card-limit')?.value || '4');
     const pace = document.getElementById('planner-pace')?.value || '2';
     const customDep = document.getElementById('planner-dep-text')?.value?.trim() || '';
+    const spreadMode = App._plannerState?.spreadMode || false;
 
-    const settings = {
-        depType: ps.depType,
-        customDep,
-        cardLimit,
-        daysMode: ps.daysMode,
-        pace
-    };
+const mustGoIds = App._plannerState?.mustGoIds || new Set();
+const settings = {
+    depType: ps.depType,
+    customDep,
+    cardLimit,
+    daysMode: ps.daysMode,
+    pace,
+    spreadMode,
+    mustGoIds  // 🚀 新增
+};
+
+    // 🚀 按下規劃前先去重：名稱 + info 合併指紋
+    const seenKeys = new Set();
+    const duplicates = [];
+    const deduplicatedCards = ps.selectedCards.filter(c => {
+        const key = `${c.name?.trim().toLowerCase()}__${(c.info || '').trim().toLowerCase()}`;
+        if (seenKeys.has(key)) {
+            duplicates.push(c.name);
+            return false;
+        }
+        seenKeys.add(key);
+        return true;
+    });
+
+    // 🚀 有剔除時告知使用者
+    if (duplicates.length > 0) {
+        uiManager.showToast('ℹ️', `已剔除 ${duplicates.length} 張重複：${duplicates.slice(0, 2).join('、')}${duplicates.length > 2 ? '...' : ''}`);
+    }
+
+    // 🚀 用去重後的卡片繼續
+    ps.selectedCards = deduplicatedCards;
 
     const prompt = window.backlogManager._generateDayPlannerPrompt(ps.trip, ps.selectedCards, settings);
     await navigator.clipboard.writeText(prompt);
     uiManager.showToast('✨', `規劃指令已複製（${ps.selectedCards.length} 張小卡）`);
 
-    // 切換到貼入 JSON 的畫面
     const pasteContent = `
         <p style="font-size: 11px; color: var(--color-text-tertiary); margin: 0 0 10px; line-height: 1.6;">
             指令已複製，請貼到 AI 取得規劃結果後，將回傳的 JSON 貼入下方。
@@ -6199,6 +6244,31 @@ async executeAIPlanner() {
 
     App.modalCreate('ai-planner-modal', 'AI 行程規劃 · 貼入結果', pasteContent, pasteActions);
 },
+
+// 🚀 必去切換
+_toggleMustGo(cardId) {
+    App._plannerState = App._plannerState || {};
+    App._plannerState.mustGoIds = App._plannerState.mustGoIds || new Set();
+
+    const ids = App._plannerState.mustGoIds;
+    const isMust = ids.has(cardId);
+    isMust ? ids.delete(cardId) : ids.add(cardId);
+
+    // 視覺更新
+    const card = document.getElementById(`mustgo-card-${cardId}`);
+    const star = document.getElementById(`mustgo-star-${cardId}`);
+    if (card) {
+        card.style.border = isMust ? '1px solid #E2E8F0' : '1.5px solid #F4C0D1';
+        card.style.background = isMust ? 'white' : '#FBEAF0';
+    }
+    if (star) {
+        star.style.background = isMust ? '#F1F5F9' : '#FBEAF0';
+        star.innerHTML = isMust
+            ? '<i class="fa-regular fa-star" style="font-size: 13px; color: #CBD5E1;"></i>'
+            : '<i class="fa-solid fa-star" style="font-size: 13px; color: #D4537E;"></i>';
+    }
+},
+
 
 // 🤖 AI 規劃器：解析結果並顯示預覽
 parseAIPlannerResult() {
@@ -6227,20 +6297,25 @@ parseAIPlannerResult() {
     }
 },
 
+// 🚀 [Global-Draft] 全域草稿讀寫工具
+_getDrafts() {
+    try {
+        return JSON.parse(localStorage.getItem('tf_ai_planner_drafts') || '[]');
+    } catch { return []; }
+},
+_saveDrafts(drafts) {
+    try {
+        localStorage.setItem('tf_ai_planner_drafts', JSON.stringify(drafts));
+    } catch (e) {
+        console.error('🚨 [Draft-Save] 草稿寫入失敗:', e);
+    }
+},
+
 // 🤖 AI 規劃器：確認並儲存草稿
 async _confirmAndSaveAIPlan() {
     const ps = App._plannerState;
     if (!ps?.pendingResult || !ps?.trip) return;
 
-    // 🚀 資料遷移：舊版單一草稿 → 新版陣列
-    if (!Array.isArray(ps.trip.aiPlannerDrafts)) {
-        ps.trip.aiPlannerDrafts = ps.trip.aiPlannerDraft
-            ? [ps.trip.aiPlannerDraft]
-            : [];
-        delete ps.trip.aiPlannerDraft;
-    }
-
-    // 🚀 自動產生草稿標題（從 days 城市推導）
     const cities = [...new Set(ps.selectedCards.map(c => c.city).filter(Boolean))];
     const days = ps.pendingResult.days?.length || 0;
     const title = cities.length > 0
@@ -6251,57 +6326,55 @@ async _confirmAndSaveAIPlan() {
         id: `draft_${Date.now()}`,
         createdAt: Date.now(),
         title,
+        tripId: ps.trip.id,       // 🚀 記錄來源行程（備查用，不做限制）
+        tripName: ps.trip.name || ps.trip.city || '',
         selectedCards: ps.selectedCards.map(c => ({
             id: c.id, name: c.name, category: c.category, city: c.city
         })),
         result: ps.pendingResult
     };
 
-    ps.trip.aiPlannerDrafts.push(newDraft);
-
-    await App.persistState(ps.trip);
+    // 🚀 存到全域 localStorage
+    const drafts = App._getDrafts();
+    drafts.unshift(newDraft); // 最新的放最前面
+    App._saveDrafts(drafts);
 
     App.modalRemove('ai-planner-modal');
     uiManager.showToast('✅', `草稿「${title}」已儲存`);
-
-    const idx = state.trips.findIndex(t => t.id === ps.trip.id);
-    if (idx !== -1) state.trips[idx] = ps.trip;
 },
 
 // 🤖 AI 草稿：開啟草稿列表
 openAIPlannerDraft() {
-    const trip = state.trips?.find(t => t.id === state.activeTripId);
-    if (!trip) return;
+    // 🚀 從全域讀取，不再依賴 trip
+    let drafts = App._getDrafts();
 
-    // 🚀 遷移舊版單一草稿
-    if (trip.aiPlannerDraft && !Array.isArray(trip.aiPlannerDrafts)) {
-        const legacy = trip.aiPlannerDraft;
-        if (!legacy.id) legacy.id = `draft_${legacy.createdAt || Date.now()}`;
-        if (!legacy.title) {
-            const cities = [...new Set((legacy.selectedCards || []).map(c => c.city).filter(Boolean))];
-            const days = legacy.result?.days?.length || 0;
-            legacy.title = cities.length > 0 ? `${cities.slice(0, 2).join('・')} ${days} 天` : `AI 草稿 ${days} 天`;
-        }
-        trip.aiPlannerDrafts = [legacy];
-        delete trip.aiPlannerDraft;
-        App.persistState(trip);
-    }
-
-    // 🚀 過濾掉沒有 id 或 result 的壞資料
-    if (Array.isArray(trip.aiPlannerDrafts)) {
-        trip.aiPlannerDrafts = trip.aiPlannerDrafts.filter(d => d.id && d.result);
-        // 補上缺失的 id 或 title
-        trip.aiPlannerDrafts.forEach(d => {
-            if (!d.id) d.id = `draft_${d.createdAt || Date.now()}`;
-            if (!d.title) {
-                const cities = [...new Set((d.selectedCards || []).map(c => c.city).filter(Boolean))];
-                const days = d.result?.days?.length || 0;
-                d.title = cities.length > 0 ? `${cities.slice(0, 2).join('・')} ${days} 天` : `AI 草稿 ${days} 天`;
+    // 🚀 遷移舊版：掃描所有 trip 裡的草稿，搬到全域
+    if (state.trips) {
+        let migrated = false;
+        state.trips.forEach(trip => {
+            const legacy = trip.aiPlannerDrafts || (trip.aiPlannerDraft ? [trip.aiPlannerDraft] : []);
+            legacy.forEach(d => {
+                if (!d.id || !d.result) return;
+                if (drafts.find(existing => existing.id === d.id)) return; // 已存在不重複
+                if (!d.title) {
+                    const cities = [...new Set((d.selectedCards || []).map(c => c.city).filter(Boolean))];
+                    const days = d.result?.days?.length || 0;
+                    d.title = cities.length > 0 ? `${cities.slice(0, 2).join('・')} ${days} 天` : `AI 草稿 ${days} 天`;
+                }
+                d.tripId = trip.id;
+                d.tripName = trip.name || trip.city || '';
+                drafts.unshift(d);
+                migrated = true;
+            });
+            // 🚀 遷移後清空 trip 裡的草稿，避免重複
+            if (migrated) {
+                delete trip.aiPlannerDraft;
+                delete trip.aiPlannerDrafts;
+                App.persistState(trip);
             }
         });
+        if (migrated) App._saveDrafts(drafts);
     }
-
-    const drafts = trip.aiPlannerDrafts || [];
 
     if (drafts.length === 0) {
         return uiManager.showToast('⚠️', '尚無草稿，請先選取小卡並 AI 規劃');
@@ -6317,11 +6390,11 @@ openAIPlannerDraft() {
     App.modalCreate('ai-draft-modal', `草稿行程 · ${drafts.length} 份`, content, actions);
 },
 
-
 // 🤖 AI 草稿：開啟單一草稿預覽
 openAIPlannerDraftDetail(draftId) {
-    const trip = state.trips?.find(t => t.id === state.activeTripId);
-    const draft = trip?.aiPlannerDrafts?.find(d => d.id === draftId);
+    // 🚀 從全域讀取
+    const drafts = App._getDrafts();
+    const draft = drafts.find(d => d.id === draftId);
     if (!draft) return;
 
     const timeStr = (() => {
@@ -6334,7 +6407,17 @@ openAIPlannerDraftDetail(draftId) {
         return `${Math.floor(hrs / 24)} 天前`;
     })();
 
-    const content = viewEngine._renderAIPlannerPreview(draft.result, trip, draft.selectedCards, draft.id);
+    // 🚀 用全域 backlog 補強草稿快照
+    const globalItems = window.backlogManager?.items || [];
+    const enrichedCards = (draft.selectedCards || []).map(snapCard => {
+        const live = globalItems.find(g => String(g.id) === String(snapCard.id));
+        return live ? { ...snapCard, ...live } : snapCard;
+    });
+
+    // 🚀 trip 只用來提供行程資訊，找不到也不擋
+    const trip = state.trips?.find(t => t.id === draft.tripId) || { city: draft.tripName || '' };
+
+    const content = viewEngine._renderAIPlannerPreview(draft.result, trip, enrichedCards, draft.id);
     const actions = `
         <button onclick="App._deleteAIPlannerDraft('${draftId}')"
                 class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">
@@ -6350,24 +6433,23 @@ openAIPlannerDraftDetail(draftId) {
 
 // 🤖 AI 草稿：刪除單一草稿
 async _deleteAIPlannerDraft(draftId) {
-    const trip = state.trips?.find(t => t.id === state.activeTripId);
-    if (!trip?.aiPlannerDrafts) return;
-
-    const draft = trip.aiPlannerDrafts.find(d => d.id === draftId);
+    // 🚀 從全域刪除
+    let drafts = App._getDrafts();
+    const draft = drafts.find(d => d.id === draftId);
     const title = draft?.title || '此草稿';
 
-    trip.aiPlannerDrafts = trip.aiPlannerDrafts.filter(d => d.id !== draftId);
-    await App.persistState(trip);
+    drafts = drafts.filter(d => d.id !== draftId);
+    App._saveDrafts(drafts);
 
     App.modalRemove('ai-draft-detail-modal');
     App.modalRemove('ai-draft-modal');
     uiManager.showToast('✅', `「${title}」已刪除`);
 
-    // 🚀 若還有其他草稿，重新開啟列表
-    if (trip.aiPlannerDrafts.length > 0) {
+    if (drafts.length > 0) {
         setTimeout(() => App.openAIPlannerDraft(), 300);
     }
 },
+
 
 // 🤖 AI 規劃器：狀態控制
 _setPlannerDep(type) {
@@ -6418,6 +6500,23 @@ _updatePlannerPace(val) {
     const descEl = document.getElementById('planner-pace-desc');
     if (labelEl) labelEl.textContent = labels[val];
     if (descEl) descEl.textContent = descs[val];
+},
+
+_toggleSpreadMode() {
+    App._plannerState = App._plannerState || {};
+    const current = App._plannerState.spreadMode || false;
+    const next = !current;
+    App._plannerState.spreadMode = next;
+
+    const toggle = document.getElementById('spread-mode-toggle');
+    const knob = document.getElementById('spread-mode-knob');
+    const desc = document.getElementById('spread-mode-desc');
+
+    if (toggle) toggle.style.background = next ? '#D4537E' : '#E2E8F0';
+    if (knob) knob.style.transform = next ? 'translateX(18px)' : 'translateX(0px)';
+    if (desc) desc.textContent = next
+        ? '開啟：地理優先的基礎上，同天同類景點自動拆分至不同天'  // 🚀 修正
+        : '關閉：純依地理位置排列，不限制同天分類';               // 🚀 修正
 },
 
 /**
@@ -7684,10 +7783,10 @@ App.filterTrainingFocus = (focus) => {
 //              靈感匯聚相關
 // ========================================
 
-// 🤖 草稿第二階段：從草稿取出該天小卡，啟動精煉流程
 App.startDayRefinement = function(draftId, dayIndex) {
-    const trip = state.trips?.find(t => t.id === state.activeTripId);
-    const draft = trip?.aiPlannerDrafts?.find(d => d.id === draftId);
+    // 🚀 從全域讀取草稿，不再依賴 trip
+    const drafts = App._getDrafts();
+    const draft = drafts.find(d => d.id === draftId);
     if (!draft) return;
 
     const day = draft.result?.days?.[dayIndex];
@@ -7704,14 +7803,11 @@ App.startDayRefinement = function(draftId, dayIndex) {
 
     // 🚀 3. 等頁面渲染完，把該天小卡加上 .selected class
     setTimeout(() => {
-        // 先清除所有選取
         backlogManager.clearSelection();
 
-        // 🚀 兼容新舊格式：新格式 {id, suggested_time}，舊格式純字串
         day.cards.forEach(card => {
             const cardId = typeof card === 'object' ? card.id : card;
             if (!cardId) return;
-
             backlogManager.toggleSelection(cardId);
             const cardEl = document.getElementById(`card-${cardId}`);
             if (cardEl) {
@@ -7725,7 +7821,6 @@ App.startDayRefinement = function(draftId, dayIndex) {
 
         viewEngine.updateRefineryFAB();
         uiManager.showToast('🏭', `Day ${dayIndex + 1}「${day.theme}」已備妥，點 AI 規劃進入精煉`);
-
     }, 500);
 };
 

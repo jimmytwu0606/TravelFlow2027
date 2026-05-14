@@ -30,7 +30,7 @@ export const CONFIG = {
     // ============================================================
     // 🇯🇵 日語聲線矩陣 (Chirp3-HD Studio 級)
     // ============================================================
-    // --- ♂️ Chirp3-HD 男性陣列 (15 組) ---
+    // --- ♂️ Chirp3-HD 男性陣列 (18 組) ---
     { id: 'ja-JP-Chirp3-HD-Achird', name: '老練男聲 Achird', gender: 'M', desc: '渾厚且具權威感，適合教授、署長' },
     { id: 'ja-JP-Chirp3-HD-Algenib', name: '專業男聲 Algenib', gender: 'M', desc: '發音銳利，適合醫師、技術人員' },
     { id: 'ja-JP-Chirp3-HD-Algieba', name: '穩重男聲 Algieba', gender: 'M', desc: '低頻共鳴強，適合中老年男性' },
@@ -46,8 +46,12 @@ export const CONFIG = {
     { id: 'ja-JP-Chirp3-HD-Sadaltager', name: '沉著男聲 Sadaltager', gender: 'M', desc: '速度平穩，適合金融精英' },
     { id: 'ja-JP-Chirp3-HD-Schedar', name: '堅毅男聲 Schedar', gender: 'M', desc: '語氣果決，適合警察、教練' },
     { id: 'ja-JP-Chirp3-HD-Zubenelgenubi', name: '老派男聲 Zubenel', gender: 'M', desc: '帶有歲月感，適合老店舖老闆' },
+    { id: 'ja-JP-Leda',                    name: '低沉男聲 Leda',      gender: 'M', desc: '音色低沉厚實，適合旁白、解說' },
+    { id: 'ja-JP-Chirp3-HD-Pulcherrima',   name: '細緻男聲 Pulcherrima',   gender: 'M', desc: '辨識度極高，適合特定彩蛋' },
+    { id: 'ja-JP-Chirp3-HD-Umbriel',       name: '神祕男聲 Umbriel',   gender: 'M', desc: '音色神祕，適合反派、間諜' },
 
-    // --- ♀️ Chirp3-HD 女性陣列 (15 組) ---
+
+    // --- ♀️ Chirp3-HD 女性陣列 (12 組) ---
     { id: 'ja-JP-Chirp3-HD-Achernar', name: '幹練女聲 Achernar', gender: 'F', desc: '語速快且準確，適合女強人' },
     { id: 'ja-JP-Chirp3-HD-Aoede', name: '親切女聲 Aoede', gender: 'F', desc: '自然笑容感，適合服務台、嚮導' },
     { id: 'ja-JP-Chirp3-HD-Autonoe', name: '優雅女聲 Autonoe', gender: 'F', desc: '語調優美，適合京都名媛、女將' },
@@ -57,11 +61,8 @@ export const CONFIG = {
     { id: 'ja-JP-Chirp3-HD-Gacrux', name: '沈靜女聲 Gacrux', gender: 'F', desc: '冷靜理性，適合調查官、鑑定官' },
     { id: 'ja-JP-Chirp3-HD-Kore', name: '甜美女聲 Kore', gender: 'F', desc: '音頻明亮，適合年輕練習生' },
     { id: 'ja-JP-Chirp3-HD-Laomedeia', name: '成熟女聲 Laomedeia', gender: 'F', desc: '氣場強大，適合名譽顧問' },
-    { id: 'ja-JP-Leda', name: '典雅女聲 Leda', gender: 'F', desc: '細膩婉約，適合茶道家、藝妓' },
-    { id: 'ja-JP-Chirp3-HD-Pulcherrima', name: '細緻女聲 Pulcher', gender: 'F', desc: '辨識度極高，適合特定彩蛋' },
     { id: 'ja-JP-Chirp3-HD-Sulafat', name: '和藹女聲 Sulafat', gender: 'F', desc: '具長輩感，適合雜貨店婆婆' },
-    { id: 'ja-JP-Chirp3-HD-Umbriel', name: '磁性女聲 Umbriel', gender: 'F', desc: '神祕感強，適合神祕人、間諜' },
-    { id: 'ja-JP-Chirp3-HD-Vindemiatrix', name: '幹練女聲 Vindemi', gender: 'F', desc: '商務標準，適合首席乘務員' },
+    { id: 'ja-JP-Chirp3-HD-Vindemiatrix', name: '幹練女聲 Vindemiatrix', gender: 'F', desc: '商務標準，適合首席乘務員' },
     { id: 'ja-JP-Chirp3-HD-Zephyr', name: '清透女聲 Zephyr', gender: 'F', desc: '如微風般自然，適合SPA、旅館' }
  ]
 };

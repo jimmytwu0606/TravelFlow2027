@@ -96,109 +96,188 @@ export const viewEngine = {
 
 _renderSatelliteTrack(container, trip, focusDay) {
     if (!container) return;
-    const hasFlight = (trip.transport || []).some(f => Number(f.day) === Number(focusDay));
-    const hasHotel  = (trip.hotels  || []).some(h => h.days && h.days.includes(focusDay));
-    const flightFirst = hasFlight || (!hasFlight && !hasHotel);
-    const trackId = `sat-track-${focusDay}`;
 
     container.innerHTML = `
-        <div id="${trackId}" style="position:relative; margin:0 20px 12px; transition:height 0.4s cubic-bezier(0.4,0,0.2,1);">
-            <div id="slot-flight-${focusDay}"
-                 style="position:absolute; left:0; right:0; border-radius:14px; overflow:hidden;
-                        transition:transform 0.4s cubic-bezier(0.4,0,0.2,1);
-                        ${flightFirst ? 'z-index:2; box-shadow:0 4px 16px rgba(0,0,0,0.08);' : 'z-index:1;'}">
+        <div style="margin:0 20px 12px;">
+            <div id="sat-card-slot-${focusDay}" style="border-radius:14px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.08);">
             </div>
-            <div id="slot-hotel-${focusDay}"
-                 style="position:absolute; left:0; right:0; border-radius:14px; overflow:hidden;
-                        transition:transform 0.4s cubic-bezier(0.4,0,0.2,1);
-                        ${!flightFirst ? 'z-index:2; box-shadow:0 4px 16px rgba(0,0,0,0.08);' : 'z-index:1;'}">
-            </div>
-        </div>
-    `;
+        </div>`;
 
-    this.renderTransportCard(document.getElementById(`slot-flight-${focusDay}`), trip, focusDay);
-    this.renderHotelCard(document.getElementById(`slot-hotel-${focusDay}`), trip, focusDay);
+    // ✅ 優先顯示邏輯：有航班顯示航班，無航班才顯示住宿
+    const allFlights = Array.isArray(trip.transport) ? trip.transport : [];
+    const hasFlight = allFlights.some(f => Number(f.day) === Number(focusDay));
+    const hasHotel = (trip.hotels || []).some(h => h.days && h.days.includes(focusDay));
 
-requestAnimationFrame(() => {
-    setTimeout(() => {
-        this._layoutSatelliteCards(focusDay, flightFirst ? 'flight' : 'hotel');
-    }, 150);
-});
-},
-
-_switchSatelliteCard(focusDay, bringToFront) {
-    this._layoutSatelliteCards(focusDay, bringToFront, true);
-},
-
-_layoutSatelliteCards(focusDay, active) {
-    const track      = document.getElementById(`sat-track-${focusDay}`);
-    const slotFlight = document.getElementById(`slot-flight-${focusDay}`);
-    const slotHotel  = document.getElementById(`slot-hotel-${focusDay}`);
-    if (!track || !slotFlight || !slotHotel) return;
-
-    const PEEK = 44;
-
-    // 先把兩個都解除限制，量真實高度
-    slotFlight.style.height   = 'auto';
-    slotFlight.style.overflow = 'hidden';
-    slotHotel.style.height    = 'auto';
-    slotHotel.style.overflow  = 'hidden';
-
-    const flightH = slotFlight.scrollHeight;
-    const hotelH  = slotHotel.scrollHeight;
-
-    if (active === 'flight') {
-        slotFlight.style.zIndex    = '2';
-        slotFlight.style.transform = 'translateY(0)';
-        slotFlight.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)';
-        slotFlight.style.height    = flightH + 'px';
-
-        slotHotel.style.zIndex     = '1';
-        slotHotel.style.transform  = `translateY(${flightH}px)`;
-        slotHotel.style.boxShadow  = 'none';
-        slotHotel.style.height     = PEEK + 'px';
-
-        track.style.height = (flightH + PEEK) + 'px';
-
-    } else {
-        slotHotel.style.zIndex     = '2';
-        slotHotel.style.transform  = 'translateY(0)';
-        slotHotel.style.boxShadow  = '0 4px 16px rgba(0,0,0,0.08)';
-        slotHotel.style.height     = hotelH + 'px';
-
-        slotFlight.style.zIndex    = '1';
-        slotFlight.style.transform = `translateY(${hotelH}px)`;
-        slotFlight.style.boxShadow = 'none';
-        slotFlight.style.height    = PEEK + 'px';
-
-        track.style.height = (hotelH + PEEK) + 'px';
+    let initialMode = 'flight';  // 預設
+    if (!hasFlight && hasHotel) {
+        initialMode = 'hotel';
     }
+
+    this._renderSatCard(trip, focusDay, initialMode);
 },
 
-/** 詳情頁導播：主框架焊接 (已導入動態軌道槽位) */
-renderTripDetail(container, trip) {
-    if (!trip) return;
+_renderSatCard(trip, focusDay, mode) {
+    const slot = document.getElementById(`sat-card-slot-${focusDay}`);
+    if (!slot) return;
 
-    container.innerHTML = `
-        <div class="animate-fade-in space-y-6">
-            <div id="overview-section">${this.renderOverviewCard(trip)}</div>
+    const allFlights = Array.isArray(trip.transport) ? trip.transport : [];
+    const f = allFlights.find(fl => Number(fl.day) === Number(focusDay)) || null;
+    const hotels = trip.hotels || [];
+    const todaysHotels = hotels.filter(h => h.days && h.days.includes(focusDay));
+    const h = todaysHotels.length > 0 ? todaysHotels[0] : null;
 
-            <!-- 🚀 核心動態槽位容器 -->
-            <div id="satellite-track-mount" class="relative -mx-5 overflow-hidden"></div>
+    const flightLabel = f
+        ? `${f.carrier || ''} ${f.code || ''} · ${f.depTime || '--'} → ${f.arrTime || '--'}`.trim()
+        : '今日航班';
 
-            <div class="pt-2">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">Daily Roadmap</h3>
-                <div id="day-tabs-container" class="flex gap-2 overflow-x-auto pb-2 no-scrollbar"></div>
+    // 切換列：顯示另一張卡的資訊
+    const switchBar = mode === 'flight' ? `
+        <div onclick="viewEngine._renderSatCard(window._satTrip_${focusDay}, ${focusDay}, 'hotel')"
+             style="display:flex; align-items:center; justify-content:space-between;
+                    padding:0 14px; height:44px; cursor:pointer;
+                    background:#185FA5; font-size:12px; font-weight:600; color:#E6F1FB;">
+            <span><i class="fa-solid fa-bed" style="font-size:13px; margin-right:6px;"></i>下榻住宿</span>
+            <i class="fa-solid fa-chevron-right" style="font-size:12px; opacity:0.7;"></i>
+        </div>` : `
+        <div onclick="viewEngine._renderSatCard(window._satTrip_${focusDay}, ${focusDay}, 'flight')"
+             style="display:flex; align-items:center; justify-content:space-between;
+                    padding:0 14px; height:44px; cursor:pointer;
+                    background:#D4537E; font-size:12px; font-weight:600; color:#FBEAF0;">
+            <span><i class="fa-solid fa-plane-departure" style="font-size:13px; margin-right:6px;"></i>${flightLabel}</span>
+            <i class="fa-solid fa-chevron-right" style="font-size:12px; opacity:0.7;"></i>
+        </div>`;
+
+    const cardContent = mode === 'flight'
+        ? this._satFlightContent(trip, focusDay, f)
+        : this._satHotelContent(trip, focusDay, h);
+
+    slot.innerHTML = `
+        <div style="background:white; border:0.5px solid #E2E8F0; border-radius:14px; overflow:hidden;">
+            ${cardContent}
+            ${switchBar}
+        </div>`;
+
+    // 把 trip 存到 window 讓 onclick 能取得
+    window[`_satTrip_${focusDay}`] = trip;
+},
+
+_satFlightContent(trip, focusDay, f) {
+    const carrier = f?.carrier || '--';
+    const code = f?.code || '--';
+
+    return `
+        <div onclick="App.promptEditTransport('${trip.id}')"
+             style="background:#D4537E; padding:8px 14px 9px;
+                    display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-plane-departure" style="font-size:15px; color:#FBEAF0;"></i>
+                <div>
+                    <div style="font-size:13px; font-weight:600; color:#FBEAF0; line-height:1.2;">${carrier}</div>
+                    <div style="font-size:11px; color:#F4C0D1;">${code}</div>
+                </div>
             </div>
-
-            <div id="day-content-area" class="animate-fade-in"></div>
+            <span style="font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; background:#FBEAF0; color:#993556;">D${focusDay}</span>
         </div>
-    `;
 
-    // 初始點火 (預設 D1)
-    this._renderSatelliteTrack(document.getElementById('satellite-track-mount'), trip, 1);
-    this.renderDayTabs(document.getElementById('day-tabs-container'), trip, 0);
-    this.renderDayDetailContent(document.getElementById('day-content-area'), trip, 0);
+        ${f ? `
+        <div onclick="App.promptEditTransport('${trip.id}')" style="padding:12px 14px 10px; cursor:pointer;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                <div style="flex:1;">
+                    <div style="font-size:11px; color:#B4B2A9; margin-bottom:1px;">${f.depPort || '--'}</div>
+                    <div style="font-size:30px; font-weight:600; color:#D4537E; font-variant-numeric:tabular-nums; letter-spacing:-0.03em; line-height:1;">${f.depTime || '--:--'}</div>
+                    <div style="font-size:9px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-top:2px;">Departure</div>
+                </div>
+                <div style="flex:0 0 44px; display:flex; align-items:center; justify-content:center; padding-top:10px;">
+                    <div style="width:100%; display:flex; align-items:center;">
+                        <div style="width:3px; height:3px; border-radius:50%; background:#ED93B1; flex-shrink:0;"></div>
+                        <div style="flex:1; border-top:1.5px dashed #ED93B1;"></div>
+                        <i class="fa-solid fa-plane" style="font-size:12px; color:#D4537E; flex-shrink:0;"></i>
+                        <div style="flex:1; border-top:1.5px dashed #ED93B1;"></div>
+                        <div style="width:3px; height:3px; border-radius:50%; background:#ED93B1; flex-shrink:0;"></div>
+                    </div>
+                </div>
+                <div style="flex:1; text-align:right;">
+                    <div style="font-size:11px; color:#B4B2A9; margin-bottom:1px;">${f.arrPort || '--'}</div>
+                    <div style="font-size:30px; font-weight:600; color:#D4537E; font-variant-numeric:tabular-nums; letter-spacing:-0.03em; line-height:1;">${f.arrTime || '--:--'}</div>
+                    <div style="font-size:9px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-top:2px;">Arrival</div>
+                </div>
+            </div>
+        </div>
+        <div style="display:flex; align-items:center; margin:0 -1px;">
+            <div style="width:14px; height:14px; border-radius:50%; background:#F8FAFC; border:0.5px solid #E2E8F0; flex-shrink:0;"></div>
+            <div style="flex:1; border-top:1.5px dashed #E2E8F0;"></div>
+            <div style="width:14px; height:14px; border-radius:50%; background:#F8FAFC; border:0.5px solid #E2E8F0; flex-shrink:0;"></div>
+        </div>
+        <div onclick="App.promptEditTransport('${trip.id}')" style="padding:8px 14px 10px; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:6px 8px; cursor:pointer;">
+            <div>
+                <div style="font-size:9px; color:#B4B2A9; text-transform:uppercase; margin-bottom:2px;">艙等</div>
+                <div style="font-size:12px; font-weight:600; color:#1a1a1a;">${f.cabin || '經濟艙'}</div>
+            </div>
+            <div>
+                <div style="font-size:9px; color:#B4B2A9; text-transform:uppercase; margin-bottom:2px;">座位</div>
+                <div style="font-size:12px; font-weight:600; color:#1a1a1a;">${f.seat || '--'}</div>
+            </div>
+            <div>
+                <div style="font-size:9px; color:#B4B2A9; text-transform:uppercase; margin-bottom:2px;">登機門</div>
+                <div style="font-size:${f.gate ? '12px' : '11px'}; font-weight:${f.gate ? '600' : '400'}; color:${f.gate ? '#1a1a1a' : '#B4B2A9'};">${f.gate || '當天公告'}</div>
+            </div>
+        </div>` : `
+        <div onclick="App.promptEditTransport('${trip.id}')" style="padding:18px 16px; text-align:center; cursor:pointer;">
+            <div style="font-size:11px; color:#D3D1C7; font-weight:600; text-transform:uppercase;">今日無航班</div>
+        </div>`}`;
+},
+
+_satHotelContent(trip, focusDay, h) {
+    return `
+        <div onclick="App.promptEditHotelByTripId('${trip.id}')"
+             style="background:#185FA5; padding:8px 14px 9px;
+                    display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-bed" style="font-size:15px; color:#E6F1FB;"></i>
+                <div>
+                    <div style="font-size:13px; font-weight:600; color:#E6F1FB; line-height:1.2;">下榻住宿</div>
+                    <div style="font-size:11px; color:#85B7EB;">Accommodation</div>
+                </div>
+            </div>
+            <span style="font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; background:#E6F1FB; color:#0C447C;">D${focusDay}</span>
+        </div>
+
+        ${h ? `
+        <div onclick="App.promptEditHotelByTripId('${trip.id}')" style="padding:10px 14px 8px; cursor:pointer;">
+            <div style="font-size:15px; font-weight:600; color:#1a1a1a; line-height:1.3; margin-bottom:8px;">${h.name}</div>
+            <div style="display:flex; align-items:flex-start; gap:6px; margin-bottom:5px;">
+                <i class="fa-solid fa-location-dot" style="font-size:12px; color:#378ADD; flex-shrink:0; margin-top:2px;"></i>
+                <div style="flex:1; min-width:0;">
+                    <div style="font-size:11px; color:#5F5E5A; line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${h.address || '未設定地址'}</div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <i class="fa-solid fa-phone" style="font-size:12px; color:#378ADD; flex-shrink:0;"></i>
+                <span style="font-size:11px; color:#5F5E5A;">${h.phone || '--'}</span>
+            </div>
+        </div>
+        <div style="display:flex; align-items:center; margin:0 -1px;">
+            <div style="width:14px; height:14px; border-radius:50%; background:#F8FAFC; border:0.5px solid #185FA5; opacity:0.4; flex-shrink:0;"></div>
+            <div style="flex:1; border-top:1.5px dashed #B5D4F4;"></div>
+            <div style="width:14px; height:14px; border-radius:50%; background:#F8FAFC; border:0.5px solid #185FA5; opacity:0.4; flex-shrink:0;"></div>
+        </div>
+        <div onclick="App.promptEditHotelByTripId('${trip.id}')" style="padding:8px 14px 10px; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:6px 8px; cursor:pointer;">
+            <div>
+                <div style="font-size:9px; color:#B4B2A9; text-transform:uppercase; margin-bottom:2px;">入住</div>
+                <div style="font-size:12px; font-weight:600; color:#185FA5;">${h.checkIn || '--'}</div>
+            </div>
+            <div>
+                <div style="font-size:9px; color:#B4B2A9; text-transform:uppercase; margin-bottom:2px;">退房</div>
+                <div style="font-size:12px; font-weight:600; color:#185FA5;">${h.checkOut || '--'}</div>
+            </div>
+            <div>
+                <div style="font-size:9px; color:#B4B2A9; text-transform:uppercase; margin-bottom:2px;">房型</div>
+                <div style="font-size:12px; font-weight:600; color:#1a1a1a;">${h.roomType || '--'}</div>
+            </div>
+        </div>` : `
+        <div onclick="App.promptEditHotelByTripId('${trip.id}')" style="padding:18px 16px; text-align:center; cursor:pointer;">
+            <div style="font-size:11px; color:#D3D1C7; font-weight:600; text-transform:uppercase;">今日無住宿資料</div>
+        </div>`}`;
 },
 
 
@@ -831,100 +910,252 @@ container.innerHTML = `
 },
 
 
-/** 🎙️ 任務分區：聲學對焦 (V2026.ULTRA 長句補償版) */
+/** 🎙️ 任務分區：聲學對焦 (重構版) */
 _renderAcousticTab(s) {
     return `
-        <div class="animate-slide-up space-y-6">
+        <div class="animate-slide-up space-y-4">
             ${this._renderAcousticSwitcher()}
             ${this._renderVoiceSection(s.voiceId)}
-            ${this._renderAudioVelocitySection(s.audioRate)}
-
-            ${this._renderLongPhraseOffsetSection()}
-
+            ${this._renderAcousticControlsSection(s.audioRate)}
             ${this._renderAcousticDiagnosticModule()}
         </div>
     `;
 },
 
-_renderAcousticDiagnosticModule() {
-    const isDebugActive = localStorage.getItem('TF_DEBUG') === 'true';
+// ─────────────────────────────────────────────
+//  Acoustic Diagnostic Module — refactored
+// ─────────────────────────────────────────────
+
+_getDebugToggleStyle(isActive) {
+    return {
+        label:      isActive ? '停止監控' : '啟動剖析',
+        status:     isActive ? '#639922'  : 'var(--color-text-tertiary)',
+        statusText: isActive
+            ? '總線攔截中，時序熱圖與語調輪廓已導通至 F12。'
+            : '啟動後將掛載攔截器至 TTS 總線，偵測長句與標點異常。',
+    };
+},
+
+_renderAcousticHeader(isActive) {
+    const s = this._getDebugToggleStyle(isActive);
     return `
-        <div class="mt-4 pt-6 border-t border-slate-100 animate-fade-in">
-            <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;">
+        <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);">
+            <div>
+                <p style="font-size:14px;font-weight:500;color:var(--color-text-primary);margin:0;">聲學診斷</p>
+                <p style="font-size:11px;color:var(--color-text-tertiary);margin:3px 0 0;letter-spacing:0.04em;text-transform:uppercase;">Acoustic Logic Debugger</p>
+            </div>
+            <button onclick="App.toggleAcousticDebug()"
+                    style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:500;cursor:pointer;transition:all 0.15s;
+                           background:${isActive ? '#FBEAF0' : 'var(--color-background-secondary)'};
+                           color:${isActive ? '#993556' : 'var(--color-text-secondary)'};
+                           border:0.5px solid ${isActive ? '#F4C0D1' : 'var(--color-border-secondary)'};
+                           border-radius:var(--border-radius-md);padding:6px 12px;">
+                <span style="width:6px;height:6px;border-radius:50%;display:inline-block;
+                             background:${isActive ? '#D4537E' : 'var(--color-text-tertiary)'};">
+                </span>
+                ${s.label}
+            </button>
+        </div>`;
+},
 
-                <!-- 標題列 -->
-                <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid var(--color-border-tertiary);">
-                    <div>
-                        <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0;">聲學診斷</p>
-                        <p style="font-size:11px;color:var(--color-text-secondary);margin:2px 0 0;">Acoustic logic debugger</p>
-                    </div>
-                    <button onclick="App.toggleAcousticDebug()"
-                            style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:500;background:${isDebugActive ? '#FBEAF0' : 'var(--color-background-secondary)'};color:${isDebugActive ? '#993556' : 'var(--color-text-secondary)'};border:0.5px solid ${isDebugActive ? '#F4C0D1' : 'var(--color-border-tertiary)'};border-radius:var(--border-radius-md);padding:6px 12px;cursor:pointer;transition:all 0.15s;">
-                        <span style="width:6px;height:6px;border-radius:50%;background:${isDebugActive ? '#D4537E' : 'var(--color-text-tertiary)'};display:inline-block;"></span>
-                        ${isDebugActive ? '停止監控' : '啟動剖析'}
+_renderAcousticStatusBar(isActive) {
+    const s = this._getDebugToggleStyle(isActive);
+    return `
+        <div style="padding:9px 16px;background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:8px;">
+            <span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;background:${s.status};"></span>
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0;font-family:monospace;">${s.statusText}</p>
+        </div>`;
+},
+
+_renderAcousticSnapshot() {
+    return `
+        <div style="padding:16px 16px 0;background:var(--color-background-primary);">
+            <p style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);margin:0 0 10px;text-transform:uppercase;letter-spacing:0.08em;">學習庫快照</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+                <div style="background:#FBEAF0;border:0.5px solid #F4C0D1;border-radius:var(--border-radius-md);padding:10px 13px;">
+                    <p style="font-size:11px;font-weight:500;color:#993556;margin:0 0 5px;">窒息記錄</p>
+                    <p style="font-size:22px;font-weight:500;color:#72243E;margin:0;" id="dm-choke-count">載入中</p>
+                </div>
+                <div style="background:#E6F1FB;border:0.5px solid #B5D4F4;border-radius:var(--border-radius-md);padding:10px 13px;">
+                    <p style="font-size:11px;font-weight:500;color:#185FA5;margin:0 0 5px;">建議閾值</p>
+                    <p style="font-size:22px;font-weight:500;color:#0C447C;margin:0;" id="dm-threshold">載入中</p>
+                </div>
+            </div>
+        </div>
+        <div style="padding:0 16px 16px;background:var(--color-background-primary);border-bottom:1px solid #E2E8F0;">
+            <p style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.08em;">高頻觸發詞</p>
+            <div id="dm-trigger-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;min-height:20px;"></div>
+            <button onclick="App.clearAcousticLearning()"
+                    style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;cursor:pointer;
+                           background:var(--color-background-secondary);color:var(--color-text-secondary);
+                           border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:5px 10px;">
+                <i class="fa-solid fa-trash-can" style="font-size:11px;"></i> 清除學習庫
+            </button>
+        </div>`;
+},
+
+_renderAcousticChokeList() {
+    return `
+        <div style="padding:14px 16px;background:var(--color-background-primary);border-bottom:1px solid #E2E8F0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <p style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);margin:0;text-transform:uppercase;letter-spacing:0.08em;">窒息記錄（可勾選）</p>
+                <div style="display:flex;gap:6px;">
+                    <button onclick="App.selectAllChokeRecords()"
+                            style="font-size:10px;padding:3px 9px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+                                   background:var(--color-background-secondary);color:var(--color-text-secondary);
+                                   border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);">
+                        全選
                     </button>
-                </div>
-
-                <!-- 狀態列 -->
-                <div style="padding:10px 16px;background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:8px;">
-                    <span style="width:6px;height:6px;border-radius:50%;background:${isDebugActive ? '#639922' : 'var(--color-text-tertiary)'};flex-shrink:0;"></span>
-                    <p style="font-size:11px;color:var(--color-text-secondary);margin:0;">
-                        ${isDebugActive ? '總線攔截中，時序熱圖與語調輪廓已導通至 F12。' : '啟動後將掛載攔截器至 TTS 總線，偵測長句與標點異常。'}
-                    </p>
-                </div>
-
-                <!-- 學習庫快照 -->
-                <div style="padding:14px 16px;border-bottom:0.5px solid var(--color-border-tertiary);">
-                    <p style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em;">學習庫快照</p>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-                        <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;">
-                            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px;">窒息記錄</p>
-                            <p style="font-size:20px;font-weight:500;color:var(--color-text-primary);margin:0;" id="dm-choke-count">載入中</p>
-                        </div>
-                        <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;">
-                            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px;">建議閾值</p>
-                            <p style="font-size:20px;font-weight:500;color:var(--color-text-primary);margin:0;" id="dm-threshold">載入中</p>
-                        </div>
-                    </div>
-
-                    <p style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em;">高頻觸發詞</p>
-                    <div id="dm-trigger-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
-                    <button onclick="App.clearAcousticLearning()"
-                            style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:5px 10px;cursor:pointer;">
-                        <i class="fa-solid fa-trash-can" style="font-size:11px;"></i> 清除學習庫
-                    </button>
-                </div>
-
-                <!-- 窒息記錄列表 -->
-                <div style="padding:14px 16px;border-bottom:0.5px solid var(--color-border-tertiary);">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                        <p style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin:0;text-transform:uppercase;letter-spacing:0.05em;">窒息記錄（可勾選）</p>
-                        <div style="display:flex;gap:6px;">
-                            <button onclick="App.selectAllChokeRecords()"
-                                    style="font-size:10px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px;background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);cursor:pointer;">
-                                全選
-                            </button>
-                            <button onclick="App.copySelectedChokeRecords()" id="dm-copy-sel-btn"
-                                    style="font-size:10px;padding:3px 8px;display:none;align-items:center;gap:4px;background:#FBEAF0;color:#993556;border:0.5px solid #F4C0D1;border-radius:var(--border-radius-md);cursor:pointer;">
-                                <i class="fa-solid fa-copy" style="font-size:11px;"></i> 複製選取
-                            </button>
-                        </div>
-                    </div>
-                    <div id="dm-choke-list"></div>
-                </div>
-
-                <!-- 底部 -->
-                <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;">
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <span style="width:5px;height:5px;border-radius:50%;background:#639922;"></span>
-                        <span style="font-size:11px;color:var(--color-text-secondary);">Core rendering: stable</span>
-                    </div>
-                    <button onclick="App.copyAllChokeRecords()"
-                            style="font-size:10px;padding:4px 10px;display:inline-flex;align-items:center;gap:4px;background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);cursor:pointer;">
-                        <i class="fa-solid fa-copy" style="font-size:11px;"></i> 一鍵複製全部
+                    <button onclick="App.copySelectedChokeRecords()" id="dm-copy-sel-btn"
+                            style="font-size:10px;padding:3px 9px;display:none;align-items:center;gap:4px;cursor:pointer;
+                                   background:#FBEAF0;color:#993556;
+                                   border:0.5px solid #F4C0D1;border-radius:var(--border-radius-md);">
+                        <i class="fa-solid fa-copy" style="font-size:11px;"></i> 複製選取
                     </button>
                 </div>
             </div>
+            <div id="dm-choke-list"></div>
+        </div>`;
+},
+
+_renderAcousticFooter() {
+    return `
+        <div style="padding:11px 16px;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:7px;">
+                <span style="width:5px;height:5px;border-radius:50%;background:#639922;flex-shrink:0;"></span>
+                <span style="font-size:11px;color:var(--color-text-tertiary);font-family:monospace;letter-spacing:0.04em;">CORE RENDERING: STABLE</span>
+            </div>
+            <button onclick="App.copyAllChokeRecords()"
+                    style="font-size:10px;padding:4px 10px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+                           background:var(--color-background-primary);color:var(--color-text-secondary);
+                           border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);">
+                <i class="fa-solid fa-copy" style="font-size:11px;"></i> 一鍵複製全部
+            </button>
+        </div>`;
+},
+
+_renderAcousticDiagnosticModule() {
+    const isActive = localStorage.getItem('TF_DEBUG') === 'true';
+    return `
+        <div class="mt-4 pt-6 border-t border-slate-100 animate-fade-in">
+            <div style="
+                background: white !important;
+                border: 1px solid #E2E8F0 !important;
+                border-radius: 16px !important;
+                overflow: hidden !important;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+            ">
+                ${this._renderAcousticHeader(isActive)}
+                ${this._renderAcousticStatusBar(isActive)}
+                ${this._renderAcousticSnapshot()}
+                ${this._renderAcousticChokeList()}
+                ${this._renderAcousticFooter()}
+            </div>
+        </div>`;
+},
+
+
+/** 🧩 聲學參數區（語速 + 音高 + 長句補償，三合一） */
+_renderAcousticControlsSection(currentRate) {
+    const pitch = localStorage.getItem('tf_audio_pitch') || '0';
+    const rate = currentRate || localStorage.getItem('tf_audio_rate') || '1.0';
+    const offset = parseInt(localStorage.getItem('tf_long_phrase_offset') || '-6');
+
+    const controls = [
+        {
+            label: '語速校準',
+            sub: 'Speaking Rate',
+            id: 'audio-rate-display',
+            val: rate,
+            unit: 'x',
+            min: 0.5, max: 2.0, step: 0.1,
+            color: '#D4537E',
+            handler: 'App.changeAudioRate(this.value)',
+            hint: null
+        },
+        {
+            label: '音高補償',
+            sub: 'Vocal Pitch Offset',
+            id: 'audio-pitch-display',
+            val: pitch,
+            unit: '',
+            min: -4.0, max: 4.0, step: 0.5,
+            color: '#185FA5',
+            handler: 'App.changeAudioPitch(this.value)',
+            hint: null
+        },
+        {
+            label: '長句呼吸補償',
+            sub: 'Long-Phrase Speed Offset',
+            id: 'long-phrase-offset-display',
+            val: offset,
+            unit: '%',
+            min: -15, max: 5, step: 1,
+            color: '#1D9E75',
+            handler: 'App.changeLongPhraseOffset(this.value)',
+            hint: '僅針對超過 20 字的長難句生效'
+        }
+    ];
+
+    const renderSlider = (c) => `
+        <div style="padding:14px 0; border-top:0.5px solid #E2E8F0;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                <div>
+                    <p style="font-size:13px; font-weight:700; color:#1a1a1a; margin:0 0 2px;">
+                        ${c.label}
+                    </p>
+                    <p style="font-size:10px; font-weight:600; color:#888780;
+                               text-transform:uppercase; letter-spacing:0.08em; margin:0;">
+                        ${c.sub}
+                    </p>
+                </div>
+                <span id="${c.id}"
+                      style="font-size:16px; font-weight:700; color:${c.color}; min-width:40px; text-align:right;">
+                    ${c.val}${c.unit}
+                </span>
+            </div>
+            <input type="range"
+                   min="${c.min}" max="${c.max}" step="${c.step}" value="${c.val}"
+                   oninput="${c.handler}; document.getElementById('${c.id}').textContent = this.value + '${c.unit}'"
+                   style="width:100%; accent-color:${c.color}; cursor:pointer;">
+            ${c.hint ? `
+            <p style="font-size:10px; color:#B4B2A9; margin:6px 0 0; font-style:italic;">
+                ※ ${c.hint}
+            </p>` : ''}
+        </div>`;
+
+    return `
+        <div style="background:white; border-radius:1.4rem; border:0.5px solid #E2E8F0;
+                    overflow:hidden; padding:16px 16px 6px;">
+
+            <!-- 標題 -->
+            <div style="margin-bottom:4px;">
+                <h3 style="font-size:14px; font-weight:700; color:#1a1a1a; margin:0 0 2px;">
+                    聲學參數調校
+                </h3>
+                <p style="font-size:10px; font-weight:600; color:#888780;
+                           text-transform:uppercase; letter-spacing:0.08em; margin:0;">
+                    Acoustic Parameter Control
+                </p>
+            </div>
+
+            ${controls.map(renderSlider).join('')}
+
+            <!-- 停止播放 -->
+            <div style="padding:12px 0 8px; border-top:0.5px solid #E2E8F0; margin-top:4px;">
+                <button onclick="App.stopAllSpeech()"
+                        style="display:flex; align-items:center; justify-content:center; gap:6px;
+                               width:100%; padding:10px; background:#F8F6F3;
+                               border:0.5px solid #E2E8F0; border-radius:10px;
+                               color:#5F5E5A; font-size:12px; font-weight:700;
+                               cursor:pointer; transition:background 0.15s;"
+                        onmouseover="this.style.background='#FCEBEB'; this.style.color='#A32D2D'"
+                        onmouseout="this.style.background='#F8F6F3'; this.style.color='#5F5E5A'">
+                    <i class="fa-solid fa-stop" style="font-size:11px;"></i>
+                    停止所有播放
+                </button>
+            </div>
+
         </div>`;
 },
 
@@ -1010,194 +1241,82 @@ _renderThemeSection(currentTheme) {
 },
 
 
-/** 🎙️ 系統聲學發動機 (V2026.ULTRA 模組化導通版) */
+/** 🧩 聲線選取器（從 CONFIG.VOICE_LIST 動態讀取） */
 _renderVoiceSection(currentVoiceId) {
     const settingLang = localStorage.getItem('tf_setting_voice_lang') || 'JP';
     const isEN = (settingLang === 'EN');
-    
-    // 🚀 1. 任務分切：渲染主容器，並掛載子組件
-    return `
-        <div class="bg-white rounded-[2.5rem] p-8 border border-slate-50 shadow-sm space-y-8 animate-fade-in">
-            ${this._renderVoicePicker(currentVoiceId, isEN)}
-            ${this._renderAcousticControls(isEN)}
-        </div>
-    `;
-},
 
-/** 🧩 子模組 A：聲線選取器 (Voice Picker) */
-_renderVoicePicker(currentVoiceId, isEN) {
-    const JP_VOICES = [
-        { id: 'ja-JP-Neural2-B', name: '🇯🇵 職人女聲 (Neural2-B)' },
-        { id: 'ja-JP-Neural2-C', name: '🇯🇵 穩重男聲 (Neural2-C)' },
-        { id: 'ja-JP-Neural2-D', name: '🇯🇵 親切男聲 (Neural2-D)' },
-        { id: 'ja-JP-Wavenet-A', name: '🇯🇵 清爽女聲 (Wavenet-A)' }
-    ];
+    const allVoices = CONFIG?.VOICE_LIST || [];
+    const jpVoices = allVoices.filter(v => v.id.startsWith('ja-JP'));
+    const enVoices = allVoices.filter(v => v.id.startsWith('en-'));
+    const activeVoices = isEN ? enVoices : jpVoices;
 
-    const EN_VOICES = [
-        { id: 'en-US-Neural2-F', name: '🇺🇸 教學女聲 (Neural2-F)' },
-        { id: 'en-US-Neural2-A', name: '🇺🇸 專業男聲 (Neural2-A)' },
-        { id: 'en-US-Wavenet-C', name: '🇺🇸 溫柔女聲 (Wavenet-C)' },
-        { id: 'en-US-Studio-O', name: '🇺🇸 錄音室男聲 (Studio-O)' }
-    ];
+    const maleVoices = activeVoices.filter(v => v.gender === 'M');
+    const femaleVoices = activeVoices.filter(v => v.gender === 'F');
 
-    const ACTIVE_OPTIONS = isEN ? EN_VOICES : JP_VOICES;
-    
-    // 自動糾偏：若 ID 不符則對位至首項
-    let finalId = ACTIVE_OPTIONS.some(v => v.id === currentVoiceId) 
-        ? currentVoiceId 
-        : ACTIVE_OPTIONS[0].id;
+    const finalId = activeVoices.some(v => v.id === currentVoiceId)
+        ? currentVoiceId
+        : activeVoices[0]?.id || '';
 
-    const optionsHTML = ACTIVE_OPTIONS.map(v => `
-        <option value="${v.id}" ${v.id === finalId ? 'selected' : ''}>${v.name}</option>
-    `).join('');
+    const renderGroup = (label, voices) => `
+        <optgroup label="${label}">
+            ${voices.map(v => `
+                <option value="${v.id}" ${v.id === finalId ? 'selected' : ''}>
+                    ${v.name}　—　${v.desc}
+                </option>`).join('')}
+        </optgroup>`;
 
     return `
-        <div class="space-y-4">
-            <div>
-                <h3 class="font-black text-slate-800 text-[1rem]">AI 語音模型選擇</h3>
-                <p class="text-[0.65rem] text-slate-400 font-bold uppercase tracking-widest mt-1 italic">
-                    ${isEN ? 'American English' : 'Japanese'} Identity Protocol
+        <div style="background:white; border-radius:1.4rem; border:0.5px solid #E2E8F0;
+                    overflow:hidden; padding:16px 16px 14px;">
+
+            <!-- 標題 -->
+            <div style="margin-bottom:14px;">
+                <h3 style="font-size:14px; font-weight:700; color:#1a1a1a; margin:0 0 2px;">
+                    AI 聲線選擇
+                </h3>
+                <p style="font-size:10px; font-weight:600; color:#888780;
+                           text-transform:uppercase; letter-spacing:0.08em; margin:0;">
+                    ${isEN ? 'English Voice Identity' : 'Japanese Voice Identity'}
+                    　·　${activeVoices.length} 組可用
                 </p>
             </div>
-            <div class="relative">
-                <select onchange="App.changeVoice(this.value)" 
-                        class="w-full bg-slate-50 border-none rounded-2xl px-4 py-4 text-[0.85rem] font-bold text-slate-600 focus:ring-2 ${isEN ? 'focus:ring-blue-100' : 'focus:ring-pink-100'} appearance-none shadow-inner transition-all cursor-pointer">
-                    ${optionsHTML}
-                </select>
-                <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-30 text-xs">▼</div>
-            </div>
-        </div>
-    `;
-},
 
-/** 🧩 子模組 B：聲學參數組件 (Acoustic Controls - V2026.ULTRA 手動控制版) */
-_renderAcousticControls(isEN) {
-    const pitch = localStorage.getItem('tf_audio_pitch') || '0';
-    const rate = localStorage.getItem('tf_audio_rate') || '1.0';
-    const accentColor = isEN ? '#3b82f6' : 'var(--theme-primary)';
-    const textColor = isEN ? 'text-blue-500' : 'theme-text-pink';
+            <!-- 下拉選單 -->
+            <select id="voice-picker-select"
+                    onchange="App.changeVoice(this.value)"
+                    style="width:100%; background:#F8F6F3; border:0.5px solid #E2E8F0;
+                           border-radius:10px; padding:10px 14px; font-size:13px;
+                           font-weight:600; color:#1a1a1a; cursor:pointer;
+                           appearance:none; outline:none;">
+                ${renderGroup('♂ 男聲', maleVoices)}
+                ${renderGroup('♀ 女聲', femaleVoices)}
+            </select>
 
-    // 1. 參數配置 (移除 onchange 自動觸發)
-    const configs = [
-        { 
-            label: '語速校準', sub: 'Speaking Rate', id: 'audio-rate-display', 
-            val: rate, min: 0.5, max: 2.0, step: 0.1, unit: 'x', 
-            handler: 'App.changeAudioRate' 
-        },
-        { 
-            label: '音頻補償', sub: 'Vocal Pitch Offset', id: 'audio-pitch-display', 
-            val: pitch, min: -4.0, max: 4.0, step: 0.5, unit: '', 
-            handler: 'App.changeAudioPitch' 
-        }
-    ];
-
-    const controlsHTML = configs.map(cfg => `
-        <div class="space-y-6 pt-6 border-t border-slate-50 first:border-t-0 first:pt-0">
-            <div class="flex justify-between items-center px-1">
-                <div>
-                    <h3 class="font-black text-slate-800 text-[1rem]">${cfg.label}</h3>
-                    <p class="text-[0.65rem] text-slate-400 font-bold uppercase tracking-widest mt-1 italic">${cfg.sub}</p>
-                </div>
-                <span id="${cfg.id}" class="${textColor} font-black text-[1.1rem]">${cfg.val}${cfg.unit}</span>
-            </div>
-            <div class="relative py-2">
-                <input type="range" min="${cfg.min}" max="${cfg.max}" step="${cfg.step}" value="${cfg.val}" 
-                    oninput="${cfg.handler}(this.value)"
-                    style="accent-color: ${accentColor};"
-                    class="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer">
-            </div>
-        </div>
-    `).join('');
-
-    // 🚀 2. 導入手動控制鍵 (播放/停止)
-    return `
-        <div class="space-y-8">
-            <div class="space-y-6">
-                ${controlsHTML}
+            <!-- 目前選取的聲線描述 -->
+            <div id="voice-desc-display"
+                 style="margin-top:10px; padding:8px 12px; background:#FBEAF0;
+                        border-radius:8px; font-size:12px; color:#993556; font-weight:600;">
+                ${activeVoices.find(v => v.id === finalId)?.desc || ''}
             </div>
 
-<div class="flex gap-3 pt-2">
-                <button onclick="App.playCurrentSample()" 
-                    class="flex-[2] flex items-center justify-center gap-2 py-4 rounded-2xl theme-bg text-white font-black text-sm hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-pink-100">
-                    <span class="text-xs">▶️</span> 試聽樣本
-                </button>
-                <button onclick="App.stopAllSpeech()" 
-                    class="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 active:scale-95 transition-all border border-slate-200">
-                    <span class="text-xs">⏹️</span> 停止
-                </button>
-            </div>
+            <!-- 試聽 -->
+            <button onclick="App.playCurrentSample()"
+                    style="display:flex; align-items:center; justify-content:center; gap:6px;
+                           width:100%; margin-top:10px; padding:10px;
+                           background:#D4537E; border:none; border-radius:10px;
+                           color:white; font-size:12px; font-weight:700; cursor:pointer;
+                           transition:opacity 0.15s;"
+                    onmouseover="this.style.opacity='0.85'"
+                    onmouseout="this.style.opacity='1'">
+                <i class="fa-solid fa-volume-high" style="font-size:12px;"></i>
+                試聽此聲線
+            </button>
 
-            <p class="text-[0.65rem] text-slate-300 px-1 leading-relaxed italic text-center">
-                職人提示：調整參數後點擊「試聽樣本」以驗證最新聽感。
-            </p>
-        </div>
-    `;
+        </div>`;
 },
 
 
-/** 📢 子發動機：朗讀語速調整區 (V2026.ULTRA 聲學導通版) */
-_renderAudioVelocitySection(currentRate) {
-    return `
-        <div class="bg-white rounded-[2.5rem] p-8 border border-slate-50 shadow-sm space-y-6 animate-slide-up">
-            <div class="flex justify-between items-center px-1">
-                <div>
-                    <h3 class="font-black text-slate-800 text-[1rem]">AI 朗讀語速</h3>
-                    <p class="text-[0.65rem] text-slate-400 font-bold uppercase tracking-widest mt-1 italic">Audio Velocity Protocol</p>
-                </div>
-                <span id="audio-rate-display" class="theme-text-pink font-black text-[1.1rem]">${currentRate}x</span>
-            </div>
-            
-            <div class="relative py-2">
-                <input type="range" min="0.5" max="1.5" step="0.1" value="${currentRate}" 
-                    oninput="App.changeAudioRate(this.value)"
-                    style="accent-color: var(--theme-primary);"
-                    class="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer transition-all">
-            </div>
-
-            <div class="flex justify-between text-[10px] font-black text-slate-300 px-1 uppercase tracking-tighter">
-                <span>Slow / 0.5x</span>
-                <span>Normal</span>
-                <span>Fast / 1.5x</span>
-            </div>
-        </div>
-    `;
-},
-
-/** 🐌 子組件：長句呼吸補償 (Long-Phrase Offset) */
-_renderLongPhraseOffsetSection() {
-    const offset = parseInt(localStorage.getItem('tf_long_phrase_offset') || '-6'); // 預設減速 6%
-    
-    return `
-        <div class="bg-white rounded-[2.5rem] p-8 border border-slate-50 shadow-sm space-y-6 animate-slide-up">
-            <div class="flex justify-between items-center px-1">
-                <div>
-                    <h3 class="font-black text-slate-800 text-[1rem]">長句呼吸補償</h3>
-                    <p class="text-[0.65rem] text-slate-400 font-bold uppercase tracking-widest mt-1 italic">Long-Phrase Speed Offset</p>
-                </div>
-                <span id="long-phrase-offset-display" class="text-blue-500 font-black text-[1.1rem]">
-                    ${offset > 0 ? '+' : ''}${offset}%
-                </span>
-            </div>
-            
-            <div class="relative py-2">
-                <input type="range" min="-15" max="5" step="1" value="${offset}" 
-                    oninput="App.changeLongPhraseOffset(this.value)"
-                    style="accent-color: #3b82f6;"
-                    class="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer transition-all">
-            </div>
-
-            <div class="flex justify-between text-[9px] font-black text-slate-300 px-1 uppercase tracking-tighter">
-                <span>極慢 / -15%</span>
-                <span>預設</span>
-                <span>輕快 / +5%</span>
-            </div>
-            
-            <p class="text-[0.65rem] text-slate-300 px-1 leading-relaxed italic">
-                職人提示：此參數僅針對超過 20 字的長難句區段生效，模擬人類解釋複雜邏輯時的緩步節奏。
-            </p>
-        </div>
-    `;
-},
 
 /** 👓 子發動機：視認性全方位對焦 (V2026.ULTRA 佈局加固版) */
 _renderVisualFocusSection(textScale, uiScale) {
@@ -1392,227 +1511,6 @@ renderOverviewCard(trip) {
     `;
 },
 
-renderTransportCard(container, trip, focusDay = 1) {
-    if (!container) return;
-    if (!trip) { container.innerHTML = ""; return; }
-
-    const allFlights = Array.isArray(trip.transport) ? trip.transport : [];
-    const todaysFlights = allFlights.filter(f => Number(f.day) === Number(focusDay));
-    container.classList.remove('hidden');
-    const f = todaysFlights.length > 0 ? todaysFlights[0] : null;
-
-    const carrier = f?.carrier || '--';
-    const code = f?.code || '--';
-
-const peekBar = `
-    <div onclick="(function(e){
-            e.stopPropagation();
-            const slot = document.getElementById('slot-flight-${focusDay}');
-            if (slot && slot.style.zIndex === '1') {
-                viewEngine._switchSatelliteCard('${focusDay}', 'flight');
-            } else {
-                viewEngine._switchSatelliteCard('${focusDay}', 'hotel');
-            }
-         })(event)"
-         style="display:flex; align-items:center; justify-content:space-between;
-                padding:0 16px; height:44px; cursor:pointer;
-                background:#185FA5; font-size:12px; font-weight:600; color:#E6F1FB;">
-        <span><i class="fa-solid fa-bed" style="font-size:13px; margin-right:6px;"></i>下榻住宿</span>
-        <i class="fa-solid fa-chevron-up" style="font-size:12px; opacity:0.7;"></i>
-    </div>`;
-
-    container.innerHTML = `
-        <div style="background:white; border-radius:14px; border:0.5px solid #E2E8F0; overflow:hidden;">
-
-            <!-- header 點擊進編輯 -->
-            <div onclick="App.promptEditTransport('${trip.id}')"
-                 style="background:#D4537E; border-radius:13px 13px 0 0; padding:10px 16px 11px;
-                        display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <i class="fa-solid fa-plane-departure" style="font-size:17px; color:#FBEAF0;"></i>
-                    <div>
-                        <div style="font-size:13px; font-weight:600; color:#FBEAF0;">${carrier}</div>
-                        <div style="font-size:12px; color:#F4C0D1; letter-spacing:0.04em;">${code}</div>
-                    </div>
-                </div>
-                <span style="font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; background:#FBEAF0; color:#993556;">D${focusDay}</span>
-            </div>
-
-            ${f ? `
-            <!-- 主體點擊進編輯 -->
-            <div onclick="App.promptEditTransport('${trip.id}')" style="padding:16px 16px 18px; cursor:pointer;">
-                <div style="display:flex; align-items:flex-start; margin-bottom:14px;">
-                    <div style="flex:1;">
-                        <div style="font-size:13px; font-weight:600; color:#1a1a1a; line-height:1.3;">${f.depPort || '--'}</div>
-                        ${f.depTerminal ? `<div style="font-size:11px; color:#D4537E; font-weight:500; margin-top:3px;">${f.depTerminal}</div>` : ''}
-                    </div>
-                    <div style="flex:0 0 52px; display:flex; flex-direction:column; align-items:center; padding-top:2px; gap:4px;">
-                        <div style="display:flex; align-items:center; width:100%;">
-                            <div style="width:4px; height:4px; border-radius:50%; background:#ED93B1; flex-shrink:0;"></div>
-                            <div style="flex:1; border-top:1.5px dashed #ED93B1;"></div>
-                            <i class="fa-solid fa-plane" style="font-size:14px; color:#D4537E; flex-shrink:0;"></i>
-                            <div style="flex:1; border-top:1.5px dashed #ED93B1;"></div>
-                            <div style="width:4px; height:4px; border-radius:50%; background:#ED93B1; flex-shrink:0;"></div>
-                        </div>
-                    </div>
-                    <div style="flex:1; text-align:right;">
-                        <div style="font-size:13px; font-weight:600; color:#1a1a1a; line-height:1.3;">${f.arrPort || '--'}</div>
-                    </div>
-                </div>
-                <div style="display:flex; align-items:flex-end;">
-                    <div style="flex:1;">
-                        <div style="font-size:36px; font-weight:600; color:#D4537E; font-variant-numeric:tabular-nums; letter-spacing:-0.03em; line-height:1;">${f.depTime || '--:--'}</div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-top:4px;">Departure</div>
-                    </div>
-                    <div style="flex:0 0 52px;"></div>
-                    <div style="flex:1; text-align:right;">
-                        <div style="font-size:36px; font-weight:600; color:#D4537E; font-variant-numeric:tabular-nums; letter-spacing:-0.03em; line-height:1;">${f.arrTime || '--:--'}</div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-top:4px;">Arrival</div>
-                    </div>
-                </div>
-            </div>
-            <div style="display:flex; align-items:center; margin:0 -1px;">
-                <div style="width:16px; height:16px; border-radius:50%; background:#F8FAFC; border:0.5px solid #E2E8F0; flex-shrink:0; z-index:1;"></div>
-                <div style="flex:1; border-top:1.5px dashed #E2E8F0;"></div>
-                <div style="width:16px; height:16px; border-radius:50%; background:#F8FAFC; border:0.5px solid #E2E8F0; flex-shrink:0; z-index:1;"></div>
-            </div>
-            <div onclick="App.promptEditTransport('${trip.id}')" style="padding:12px 16px 14px; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px 8px; cursor:pointer;">
-                <div>
-                    <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">艙等</div>
-                    <div style="font-size:13px; font-weight:600; color:#1a1a1a;">${f.cabin || '經濟艙'}</div>
-                </div>
-                <div>
-                    <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">座位</div>
-                    <div style="font-size:13px; font-weight:600; color:#1a1a1a; letter-spacing:0.04em;">${f.seat || '--'}</div>
-                </div>
-                <div>
-                    <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">登機門</div>
-                    <div style="font-size:${f.gate ? '13px' : '11px'}; font-weight:${f.gate ? '600' : '400'}; color:${f.gate ? '#1a1a1a' : '#B4B2A9'};">${f.gate || '當天公告'}</div>
-                </div>
-            </div>
-            ` : `
-            <div onclick="App.promptEditTransport('${trip.id}')" style="padding:24px 16px; text-align:center; cursor:pointer;">
-                <div style="font-size:11px; color:#D3D1C7; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;">今日無航班</div>
-            </div>
-            `}
-            ${peekBar}
-        </div>`;
-},
-
-
-renderHotelCard(container, trip, focusDay = 1) {
-    if (!container) return;
-    if (!trip || !trip.id) {
-        container.innerHTML = `<div style="padding:20px; font-size:10px; color:#B4B2A9; font-weight:600; text-transform:uppercase;">Data Syncing...</div>`;
-        return;
-    }
-
-    try {
-        const hotels = trip.hotels || [];
-        const todaysHotels = hotels.filter(h => h.days && h.days.includes(focusDay));
-        const h = todaysHotels.length > 0 ? todaysHotels[0] : null;
-
-        const allFlights = Array.isArray(trip.transport) ? trip.transport : [];
-        const f = allFlights.find(fl => Number(fl.day) === Number(focusDay));
-        const flightLabel = f
-            ? `${f.carrier || ''} ${f.code || ''} · ${f.depTime || '--'} → ${f.arrTime || '--'}`.trim()
-            : '今日航班';
-
-        const peekBar = `
-            <div onclick="(function(e){
-                    e.stopPropagation();
-                    viewEngine._switchSatelliteCard('${focusDay}', 'flight');
-                 })(event)"
-                 style="display:flex; align-items:center; justify-content:space-between;
-                        padding:0 16px; height:44px; cursor:pointer;
-                        background:#D4537E; font-size:12px; font-weight:600; color:#FBEAF0;">
-                <span><i class="fa-solid fa-plane-departure" style="font-size:13px; margin-right:6px;"></i>${flightLabel}</span>
-                <i class="fa-solid fa-chevron-up" style="font-size:12px; opacity:0.7;"></i>
-            </div>`;
-
-        container.innerHTML = `
-            <div style="background:white; border-radius:14px; border:0.5px solid #E2E8F0; overflow:hidden;">
-
-                <div onclick="(function(e){
-                        e.stopPropagation();
-                        const slot = document.getElementById('slot-hotel-${focusDay}');
-                        if (slot && slot.style.zIndex === '1') {
-                            viewEngine._switchSatelliteCard('${focusDay}', 'hotel');
-                        } else {
-                            App.promptEditHotelByTripId('${trip.id}');
-                        }
-                     })(event)"
-                     style="background:#185FA5; padding:10px 16px 11px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <i class="fa-solid fa-bed" style="font-size:17px; color:#E6F1FB;"></i>
-                        <div>
-                            <div style="font-size:13px; font-weight:600; color:#E6F1FB;">下榻住宿</div>
-                            <div style="font-size:12px; color:#85B7EB; letter-spacing:0.02em;">Accommodation</div>
-                        </div>
-                    </div>
-                    <span style="font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; background:#E6F1FB; color:#0C447C;">D${focusDay}</span>
-                </div>
-
-                ${h ? `
-                <div onclick="App.promptEditHotelByTripId('${trip.id}')" style="padding:16px 16px 18px; cursor:pointer;">
-                    <div style="font-size:18px; font-weight:600; color:#1a1a1a; line-height:1.3; margin-bottom:12px;">${h.name}</div>
-                    <div style="display:flex; align-items:flex-start; gap:6px; margin-bottom:6px;">
-                        <i class="fa-solid fa-location-dot" style="font-size:13px; color:#378ADD; flex-shrink:0; margin-top:2px;"></i>
-                        <div style="flex:1; min-width:0;">
-                            <div id="addr-short-${focusDay}" style="font-size:12px; color:#5F5E5A; line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${h.address || '未設定地址'}</div>
-                            <div id="addr-full-${focusDay}" style="font-size:12px; color:#5F5E5A; line-height:1.5; display:none;">${h.address || '未設定地址'}</div>
-                            ${h.address && h.address.length > 20 ? `
-                            <span onclick="event.stopPropagation(); (function(){
-                                const s=document.getElementById('addr-short-${focusDay}');
-                                const f=document.getElementById('addr-full-${focusDay}');
-                                const b=document.getElementById('addr-btn-${focusDay}');
-                                const open=s.style.display==='none';
-                                s.style.display=open?'block':'none';
-                                f.style.display=open?'none':'block';
-                                b.textContent=open?'展開':'收合';
-                            })()"
-                            id="addr-btn-${focusDay}"
-                            style="font-size:11px; color:#185FA5; cursor:pointer;">展開</span>
-                            ` : ''}
-                        </div>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:6px;">
-                        <i class="fa-solid fa-phone" style="font-size:13px; color:#378ADD; flex-shrink:0;"></i>
-                        <span style="font-size:12px; color:#5F5E5A;">${h.phone || '--'}</span>
-                    </div>
-                </div>
-                <div style="display:flex; align-items:center; margin:0 -1px;">
-                    <div style="width:16px; height:16px; border-radius:50%; background:#F8FAFC; border:0.5px solid #185FA5; opacity:0.4; flex-shrink:0; z-index:1;"></div>
-                    <div style="flex:1; border-top:1.5px dashed #B5D4F4;"></div>
-                    <div style="width:16px; height:16px; border-radius:50%; background:#F8FAFC; border:0.5px solid #185FA5; opacity:0.4; flex-shrink:0; z-index:1;"></div>
-                </div>
-                <div onclick="App.promptEditHotelByTripId('${trip.id}')" style="padding:12px 16px 14px; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px 8px; cursor:pointer;">
-                    <div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">入住</div>
-                        <div style="font-size:12px; font-weight:600; color:#185FA5;">${h.checkIn || '--'}</div>
-                    </div>
-                    <div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">退房</div>
-                        <div style="font-size:12px; font-weight:600; color:#185FA5;">${h.checkOut || '--'}</div>
-                    </div>
-                    <div>
-                        <div style="font-size:10px; color:#B4B2A9; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">房型</div>
-                        <div style="font-size:13px; font-weight:600; color:#1a1a1a;">${h.roomType || '--'}</div>
-                    </div>
-                </div>
-                ` : `
-                <div onclick="App.promptEditHotelByTripId('${trip.id}')" style="padding:24px 16px; text-align:center; cursor:pointer;">
-                    <div style="font-size:11px; color:#D3D1C7; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;">今日無住宿資料</div>
-                </div>
-                `}
-                ${peekBar}
-            </div>`;
-
-    } catch (err) {
-        console.error("❌ [ViewEngine] 旅館卡渲染失敗:", err);
-        container.innerHTML = `<div style="padding:20px; background:#FFF1F2; color:#E11D48; border-radius:12px; font-size:10px; font-weight:600;">數據導通異常</div>`;
-    }
-},
 
 /** 🛫 編輯班機與核心參數 (V2026.ULTRA 數據軌道擴充版) */
 promptEditOverview(tripId) {
@@ -1737,22 +1635,63 @@ promptEditOverview(tripId) {
 // ============================================================
 
 
-/** 🎨 視圖演進：Day Tabs (物理置中對焦版) */
+renderTripDetail(container, trip) {
+    if (!trip) return;
+    container.innerHTML = `
+        <div class="animate-fade-in space-y-4">
+            <div id="overview-section">${this.renderOverviewCard(trip)}</div>
+            <div id="satellite-track-mount" class="relative -mx-5 overflow-hidden"></div>
+            <div id="day-tabs-container" class="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-1"></div>
+            <div id="day-content-area" class="animate-fade-in -mx-5"></div>
+        </div>
+    `;
+    this._renderSatelliteTrack(document.getElementById('satellite-track-mount'), trip, 1);
+    this.renderDayTabs(document.getElementById('day-tabs-container'), trip, 0);
+    this.renderDayDetailContent(document.getElementById('day-content-area'), trip, 0);
+},
+
 renderDayTabs(container, trip, activeIndex) {
     if (!container || !trip.days) return;
 
+    const allFlights = Array.isArray(trip.transport) ? trip.transport : [];
+    const allHotels = Array.isArray(trip.hotels) ? trip.hotels : [];
+
     container.innerHTML = trip.days.map((day, index) => {
         const isActive = index === activeIndex;
+        const dayNum = day.dayNum;
+
+        const hasFlight = allFlights.some(f => Number(f.day) === Number(dayNum));
+        const hasHotel = allHotels.some(h => h.days && h.days.includes(dayNum));
+        const hasDot = hasFlight || hasHotel;
+
         return `
-            <div class="snap-center shrink-0 px-1">
-                <button id="day-tab-${index}" 
-                        onclick="App.switchDay('${trip.id}', ${index})" 
-                        class="px-6 py-3 rounded-2xl font-black text-xs transition-all duration-300 ${
-                            isActive 
-                            ? 'theme-bg text-white shadow-lg shadow-pink-100 scale-105' 
-                            : 'bg-white text-slate-400 border border-slate-50 hover:border-pink-100'
-                        }">
-                    DAY ${day.dayNum}
+            <div class="snap-center shrink-0">
+                <button id="day-tab-${index}"
+                        onclick="App.switchDay('${trip.id}', ${index})"
+                        style="
+                            padding: 6px 16px;
+                            border-radius: 20px;
+                            font-size: 11px;
+                            font-weight: 800;
+                            letter-spacing: 0.04em;
+                            cursor: pointer;
+                            border: 0.5px solid ${isActive ? '#D4537E' : '#E2E8F0'};
+                            background: ${isActive ? '#D4537E' : 'white'};
+                            color: ${isActive ? 'white' : '#B4B2A9'};
+                            transition: all 0.2s;
+                            display: flex;
+                            align-items: center;
+                            gap: 5px;
+                            white-space: nowrap;
+                        ">
+                    DAY ${dayNum}
+                    ${hasDot ? `<span style="
+                        width: 4px; height: 4px;
+                        border-radius: 50%;
+                        background: ${isActive ? 'rgba(255,255,255,0.7)' : '#D4537E'};
+                        display: inline-block;
+                        flex-shrink: 0;
+                    "></span>` : ''}
                 </button>
             </div>
         `;
@@ -1763,86 +1702,144 @@ renderDayTabs(container, trip, activeIndex) {
 // - renderDayTrack(cont, trip)         : 扁平化行程框生成器
 
 
-/** 🏗️ 重構：詳細規劃區渲染 (V2026.ULTRA 垂直撥盤 + 樹狀矩陣版) */
 renderDayDetailContent(container, trip, dayIndex) {
     if (!container || !trip || !trip.days) return;
-    
+
     const dayData = trip.days[dayIndex];
     if (!dayData) return;
-    
+
     const schedules = dayData.schedules || [];
-    
-    // 🚀 1. 狀態感應：從磁區提領目前的視角模式
     const viewMode = localStorage.getItem(`tf_day_view_${trip.id}`) || 'route';
     const isOverview = viewMode === 'overview';
 
-    // 🚀 2. 佈署地基：Header 採用 Flex 對位，將垂直撥盤推至最左側
+    const scheduleListHtml = (() => {
+        if (schedules.length === 0) {
+            return `<div style="
+                padding: 64px 16px;
+                background: white;
+                border-radius: 16px;
+                border: 1.5px dashed #E8E5DE;
+                text-align: center;
+                margin: 0 4px;
+            ">
+                <div style="font-size: 28px; margin-bottom: 10px; opacity: 0.2;">🗺️</div>
+                <p style="font-size: 10px; font-weight: 800; color: #D3D1C7; text-transform: uppercase; letter-spacing: 0.2em;">Route Pending</p>
+            </div>`;
+        }
+        if (isOverview) {
+            return this._renderDayOverview(schedules);
+        }
+        return schedules.map((item, idx) => {
+            const purifiedItem = {
+                ...item,
+                style: (item.style && typeof item.style === 'string')
+                    ? item.style.toLowerCase().trim()
+                    : 'default'
+            };
+            return this.renderScheduleItem(trip.id, dayIndex, purifiedItem, idx, idx === schedules.length - 1);
+        }).join('');
+    })();
+
     container.innerHTML = `
-        <div class="schedule-section animate-fade-in pb-32">
-            <div class="flex justify-between items-center px-4 mb-8">
-                <div class="flex items-center gap-5">
-                    <!-- 🛰️ 戰術垂直撥盤：工業模組化排列 -->
-                    <div class="relative w-12 h-20 bg-slate-100/80 rounded-2xl p-1 flex flex-col items-center border border-slate-200/50 shadow-inner">
-                        <!-- 🚀 滑塊：垂直位移軌道對焦 -->
-                        <div id="day-view-slider" class="absolute w-10 h-[34px] bg-white rounded-xl shadow-sm transition-all duration-300 ease-out"
-                             style="transform: ${isOverview ? 'translateY(0)' : 'translateY(36px)'}"></div>
-                        
-                        <button onclick="App.setDayViewMode('${trip.id}', 'overview', ${dayIndex})" 
-                                class="relative flex-1 w-full z-10 text-[10px] font-black tracking-tighter transition-colors ${isOverview ? 'theme-text-pink' : 'text-slate-400'}">
-                            總覽
-                        </button>
-                        <button onclick="App.setDayViewMode('${trip.id}', 'route', ${dayIndex})" 
-                                class="relative flex-1 w-full z-10 text-[10px] font-black tracking-tighter transition-colors ${!isOverview ? 'theme-text-pink' : 'text-slate-400'}">
-                            路線
-                        </button>
+        <div class="schedule-section animate-fade-in pb-32" style="margin-left: -8px;">
+
+            <!-- ── Header Card ── -->
+            <div style="
+                background: white;
+                border-radius: 16px;
+                border: 0.5px solid #E8E5DE;
+                margin: 0 20px 12px;
+                overflow: hidden;
+            ">
+                <!-- 上半：D標題 + 加號 -->
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 12px 14px 10px;
+                ">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="
+                            width: 36px; height: 36px;
+                            background: #FBEAF0;
+                            border-radius: 10px;
+                            display: flex; align-items: center; justify-content: center;
+                            flex-shrink: 0;
+                        ">
+                            <span style="font-size: 13px; font-weight: 800; color: #D4537E; font-style: italic;">D${dayIndex + 1}</span>
+                        </div>
+                        <div>
+                            <div style="font-size: 16px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">
+                                ${isOverview ? '行程總覽' : '路線規劃'}
+                            </div>
+                            <div style="font-size: 9px; font-weight: 700; color: #B4B2A9; text-transform: uppercase; letter-spacing: 0.15em; margin-top: 2px;">
+                                ${isOverview ? 'Tree Matrix View' : 'Sequential Route'}
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="flex flex-col">
-                        <div class="flex items-center gap-2">
-                            <span class="theme-text-pink font-black italic text-sm">D${dayIndex + 1}</span>
-                            <h2 class="text-xl font-black text-slate-800 tracking-tighter">
-                                ${isOverview ? '行程總覽' : '路線規劃'}
-                            </h2>
-                        </div>
-                        <p class="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none mt-1.5">
-                            ${isOverview ? 'Tree Matrix View' : 'Sequential Route'}
-                        </p>
-                    </div>
+                    <button onclick="App.promptAddSchedule('${trip.id}', ${dayIndex})"
+                            style="
+                                width: 36px; height: 36px;
+                                background: #D4537E;
+                                border-radius: 10px;
+                                border: none; cursor: pointer;
+                                display: flex; align-items: center; justify-content: center;
+                                transition: transform 0.15s, background 0.15s;
+                                flex-shrink: 0;
+                            "
+                            onmouseenter="this.style.background='#C03D6A'"
+                            onmouseleave="this.style.background='#D4537E'"
+                            ontouchstart="this.style.transform='scale(0.92)'"
+                            ontouchend="this.style.transform='scale(1)'">
+                        <i class="fa-solid fa-plus" style="font-size: 14px; color: white;"></i>
+                    </button>
                 </div>
 
-                <!-- 🚀 頂部快速動作 -->
-                <button onclick="App.promptAddSchedule('${trip.id}', ${dayIndex})" 
-                        class="w-11 h-11 theme-bg text-white rounded-[1.2rem] flex items-center justify-center shadow-lg shadow-pink-100 active:scale-90 transition-all cursor-pointer">
-                    <i class="fa-solid fa-plus text-base"></i>
-                </button>
+                <!-- 下半：模式切換 pill -->
+                <div style="display: flex; gap: 0; padding: 0 14px 12px;">
+                    <button onclick="App.setDayViewMode('${trip.id}', 'overview', ${dayIndex})"
+                            style="
+                                flex: 1;
+                                padding: 7px 0;
+                                font-size: 11px; font-weight: 800;
+                                border: 0.5px solid ${isOverview ? '#D4537E' : '#E2E8F0'};
+                                border-radius: 8px 0 0 8px;
+                                background: ${isOverview ? '#D4537E' : 'white'};
+                                color: ${isOverview ? 'white' : '#B4B2A9'};
+                                cursor: pointer;
+                                letter-spacing: 0.04em;
+                                transition: all 0.2s;
+                            ">
+                        <i class="fa-solid fa-table-cells-large" style="font-size: 10px; margin-right: 5px;"></i>總覽
+                    </button>
+                    <button onclick="App.setDayViewMode('${trip.id}', 'route', ${dayIndex})"
+                            style="
+                                flex: 1;
+                                padding: 7px 0;
+                                font-size: 11px; font-weight: 800;
+                                border: 0.5px solid ${!isOverview ? '#D4537E' : '#E2E8F0'};
+                                border-left: none;
+                                border-radius: 0 8px 8px 0;
+                                background: ${!isOverview ? '#D4537E' : 'white'};
+                                color: ${!isOverview ? 'white' : '#B4B2A9'};
+                                cursor: pointer;
+                                letter-spacing: 0.04em;
+                                transition: all 0.2s;
+                            ">
+                        <i class="fa-solid fa-route" style="font-size: 10px; margin-right: 5px;"></i>路線
+                    </button>
+                </div>
             </div>
 
-            <!-- 🚀 3. 磁區分流發動機：樹狀結構與詳細小卡分流 -->
-            <div id="schedule-list-container" class="${isOverview ? 'px-1' : 'space-y-6'}">
-                ${schedules.length > 0 
-                    ? (isOverview 
-                        ? this._renderDayOverview(schedules) // 🆕 呼叫樹狀結構渲染器
-                        : schedules.map((item, idx) => {
-                            // 🚀 數據洗滌協定
-                            const purifiedItem = {
-                                ...item,
-                                style: (item.style && typeof item.style === 'string') 
-                                    ? item.style.toLowerCase().trim() 
-                                    : 'default'
-                            };
-                            return this.renderScheduleItem(trip.id, dayIndex, purifiedItem, idx);
-                        }).join(''))
-                    : `<div class="py-24 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-100 text-center mx-2 animate-fade-in">
-                         <div class="text-3xl mb-3 opacity-20">🗺️</div>
-                         <p class="text-slate-300 font-black text-[10px] uppercase tracking-[0.2em]">Route Pending</p>
-                       </div>`
-                }
+            <!-- ── Content Area ── -->
+            <div id="schedule-list-container" style="padding: 0 12px;">
+                ${scheduleListHtml}
             </div>
         </div>`;
-        
+
     console.log(`📡 [View-Trace] Day ${dayIndex + 1} 導通 | 模式: ${viewMode} | 節點: ${schedules.length}`);
 },
-
 
 /** 🏗️ [View-Component] 每日詳情地基 (子零件) */
 _renderDayHeader(trip, dayIndex) {
@@ -1874,10 +1871,11 @@ _renderDayHeader(trip, dayIndex) {
 },
 
 
-/** 📋 [Generator] 每日行程總覽：視覺對焦校準版 (V2026.ULTRA) */
 _renderDayOverview(schedules) {
     if (!schedules || schedules.length === 0) {
-        return `<div class="py-24 text-center opacity-20 font-black uppercase tracking-widest text-xs">Sector Vacuum</div>`;
+        return `<div style="padding: 64px 16px; text-align: center;">
+            <p style="font-size: 10px; font-weight: 800; color: #D3D1C7; text-transform: uppercase; letter-spacing: 0.2em;">Sector Vacuum</p>
+        </div>`;
     }
 
     const totalCost = schedules.reduce((sum, n) => {
@@ -1887,18 +1885,13 @@ _renderDayOverview(schedules) {
 
     const nodesHtml = schedules.map((mainNode, idx) => {
         const isLast = idx === schedules.length - 1;
-        const themeColor = 'var(--theme-primary)';
-        const shadowColor = 'var(--theme-shadow)';
 
-        // 🚀 1. 多態燃料偵測與分流
+        let fuelType = 'plain';
         let subNodes = [];
-        let fuelType = 'default';
-        let fuel = {};
-
         try {
-            fuel = JSON.parse(mainNode.memo);
+            const fuel = JSON.parse(mainNode.memo);
             if (fuel.stops && Array.isArray(fuel.stops)) {
-                fuelType = 'transport'; 
+                fuelType = 'transport';
                 subNodes = fuel.stops;
             } else if (Array.isArray(fuel) && fuel[0]?.price) {
                 fuelType = 'shopping';
@@ -1909,136 +1902,126 @@ _renderDayOverview(schedules) {
             }
         } catch (e) { fuelType = 'plain'; }
 
-        const hasSubNodes = subNodes.length > 0;
+        const isTransport = fuelType === 'transport';
+        const isShopping  = fuelType === 'shopping';
+        const isNested    = fuelType === 'nested';
+
+        // 主節點圓點顏色
+        const dotColor  = isTransport ? '#185FA5' : isShopping ? '#2C2C2A' : '#D4537E';
+        const timeColor = isTransport ? '#185FA5' : isShopping ? '#2C2C2A' : '#D4537E';
+
+        // badge
+        const badgeHtml = isTransport
+            ? `<span style="font-size:11px;font-weight:800;background:#185FA5;color:white;padding:2px 8px;border-radius:4px;letter-spacing:0.08em;">TRANSPORT</span>`
+            : isShopping
+            ? `<span style="font-size:11px;font-weight:800;background:#2C2C2A;color:white;padding:2px 8px;border-radius:4px;letter-spacing:0.08em;">SHOPPING</span>`
+            : `<span style="font-size:11px;font-weight:800;background:#D4537E;color:white;padding:2px 8px;border-radius:4px;letter-spacing:0.08em;">SPOT</span>`;
+
+        // 子節點
+        const subHtml = (() => {
+if (isTransport) {
+    return subNodes.map(sub => {
+        const stopType = String(sub.type || '').toLowerCase();
+        const isArr  = stopType === 'arr';
+        const isXfer = stopType === 'xfer';
+        const isDep  = stopType === 'dep';
+const subTimeColor = isArr ? '#185FA5' : isDep ? '#D4537E' : '#5F5E5A';
+const subDotColor  = isArr ? '#185FA5' : isDep ? '#D4537E' : '#888780';
+        const hasCost = Number(sub.segment_cost) > 0;
+        return `
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid #F1EFE8;">
+                <span style="font-size:11px;font-weight:700;color:${subTimeColor};font-variant-numeric:tabular-nums;width:38px;flex-shrink:0;text-align:right;">${sub.time || '--:--'}</span>
+                <div style="width:6px;height:6px;border-radius:50%;background:${subDotColor};flex-shrink:0;"></div>
+                <span style="font-size:13px;font-weight:400;color:#444441;flex:1;min-width:0;">${sub.name || '--'}</span>
+                ${sub.seg !== undefined ? `<span style="font-size:10px;font-weight:500;color:#D3D1C7;font-style:italic;flex-shrink:0;">S${sub.seg}</span>` : ''}
+                ${hasCost ? `<span style="font-size:11px;font-weight:700;color:#185FA5;font-variant-numeric:tabular-nums;flex-shrink:0;">¥${Number(sub.segment_cost).toLocaleString()}</span>` : ''}
+            </div>`;
+    }).join('');
+}
+
+            if (isShopping) {
+                return subNodes.map(sub => `
+                    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid #F1EFE8;">
+                        <div style="width:6px;height:6px;border-radius:50%;background:#888780;flex-shrink:0;"></div>
+                        <span style="font-size:13px;font-weight:400;color:#444441;flex:1;min-width:0;">${sub.name || '--'}</span>
+                        <span style="font-size:11px;font-weight:700;color:#D4537E;font-variant-numeric:tabular-nums;flex-shrink:0;">¥${(sub.price || 0).toLocaleString()} x${sub.quantity || 1}</span>
+                    </div>`
+                ).join('');
+            }
+            if (isNested) {
+                return subNodes.map(sub => `
+                    <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:0.5px solid #F1EFE8;">
+                        <span style="font-size:11px;font-weight:700;color:#5F5E5A;font-variant-numeric:tabular-nums;width:38px;flex-shrink:0;text-align:right;padding-top:1px;">${sub.time || '--:--'}</span>
+                        <div style="width:6px;height:6px;border-radius:50%;background:#D4537E;flex-shrink:0;margin-top:5px;"></div>
+                        <span style="font-size:13px;font-weight:400;color:#444441;flex:1;min-width:0;line-height:1.5;">${sub.task || sub.location || ''}</span>
+                        ${sub.expense && sub.expense !== '0' ? `<span style="font-size:11px;font-weight:700;color:#D4537E;font-variant-numeric:tabular-nums;flex-shrink:0;">¥${Number(sub.expense).toLocaleString()}</span>` : ''}
+                    </div>`
+                ).join('');
+            }
+            return '';
+        })();
 
         return `
-            <div class="relative flex gap-5 pl-2 group animate-slide-up" style="animation-delay: ${idx * 50}ms">
-                <!-- 🛰️ 主幹導軌 -->
-                <div class="flex flex-col items-center shrink-0">
-                    <div class="w-5 h-5 rounded-full bg-white border-4 z-10 transition-transform group-active:scale-125" 
-                         style="border-color: ${themeColor}; box-shadow: 0 0 10px ${shadowColor}">
-                        <div class="w-1.5 h-1.5 rounded-full" style="background-color: ${themeColor}"></div>
+            <div style="display:flex;gap:0;position:relative;">
+                <!-- 左側時間軸軌道 -->
+                <div style="display:flex;flex-direction:column;align-items:center;width:38px;flex-shrink:0;padding-top:14px;">
+                    <span style="
+                        font-size:10px;font-weight:800;
+                        color:${timeColor};
+                        font-variant-numeric:tabular-nums;
+                        letter-spacing:-0.02em;
+                        line-height:1;margin-bottom:6px;
+                        text-align:center;width:100%;
+                    ">${mainNode.time || '--:--'}</span>
+                    <div style="width:10px;height:10px;border-radius:50%;border:2px solid ${dotColor};background:white;flex-shrink:0;z-index:1;position:relative;">
+                        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:4px;height:4px;border-radius:50%;background:${dotColor};"></div>
                     </div>
-                    ${!isLast ? `<div class="w-0.5 grow my-1 opacity-20" style="background-color: ${themeColor}"></div>` : ''}
+                    ${!isLast ? `<div style="width:1.5px;flex:1;min-height:24px;background:linear-gradient(to bottom,${dotColor}40,#E8E5DE);margin-top:4px;"></div>` : ''}
                 </div>
 
-                <!-- 📄 內容磁區：全卡片點擊觸發 -->
-                <div class="flex-1 pb-10">
-                    <details class="group/nested overflow-hidden transition-all duration-300">
-                        <summary class="block cursor-pointer outline-none select-none [&::-webkit-details-marker]:hidden">
-                            <div class="bg-white p-3.5 rounded-[1.4rem] border border-slate-100 shadow-sm active:scale-[0.98] hover:border-pink-100 transition-all relative">
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-[11px] font-black tabular-nums bg-pink-50 px-2 py-0.5 rounded-full" style="color: ${themeColor}">
-                                        ${mainNode.time || '--:--'}
-                                    </span>
-                                    ${hasSubNodes ? `
-                                        <span class="text-[9px] font-black text-slate-400">${subNodes.length} 站 ▼</span>
-                                    ` : ''}
-                                </div>
-                                <h4 class="font-black text-slate-800 text-[13px] leading-snug mt-1">${mainNode.location}</h4>
+                <!-- 右側內容卡片 -->
+                <div style="flex:1;padding:10px 0 20px 6px;min-width:0;">
+                    <div style="background:white;border-radius:14px;border:0.5px solid #E8E5DE;overflow:hidden;">
+
+                        <!-- 主節點標題 -->
+                        <div style="padding:12px 12px 10px;">
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+                                ${badgeHtml}
+                                ${subNodes.length > 0 ? `<span style="font-size:10px;font-weight:600;color:#B4B2A9;">${subNodes.length} 站</span>` : ''}
                             </div>
-                        </summary>
-
-                        <!-- 🚀 子路網渲染區：位移校準 (ml-2) 與 時間主題配色 (theme-text-pink) -->
-                        <div class="mt-3 border-t border-slate-50 animate-slide-down">
-                            ${subNodes.map((sub, sIdx) => {
-                                // 💡 職人對焦：時間標籤導入主題配色
-                                const timeLabel = `<span class="text-[10px] font-black theme-text-pink tabular-nums w-10 text-right">${sub.time || '--:--'}</span>`;
-                                
-/** 📋 [Generator] 每日行程總覽：交通路網導通 (目的地強化 + 視覺去噪版) */
-// 此區段對位於 _renderDayOverview 內 subNodes.map 針對 fuelType === 'transport' 的分支
-
-if (fuelType === 'transport') {
-    // 🚀 數據真值提領
-    const stopName = sub.name || '未知站點';
-    const stopType = String(sub.type).toLowerCase();
-    
-    // 🎯 狀態對焦：判定是否為「出發/轉乘」或「目的地」
-    const isMajor = ['dep', 'xfer'].includes(stopType);
-    const isGoal = stopType === 'arr'; // 目的地節點
-    
-    // 🎨 物理色彩路網：目的地導入雙層主題色結構
-    let dotHtml = '';
-    if (isGoal) {
-        // 目的地節點：主題色核心 + 主題色擴張外環 (對位 image_b6ccb8.png 視覺)
-        dotHtml = `
-            <div class="relative flex items-center justify-center">
-                <div class="absolute w-5 h-5 rounded-full theme-bg opacity-20 animate-pulse"></div>
-                <div class="w-2.5 h-2.5 rounded-full theme-bg z-10 shadow-[0_0_0_3px_white]"></div>
-            </div>`;
-    } else {
-        // 一般或主要節點
-        const dotBg = isMajor ? 'theme-bg' : 'bg-slate-200';
-        dotHtml = `<div class="w-2 h-2 rounded-full ${dotBg} z-10 shadow-[0_0_0_4px_white]"></div>`;
-    }
-
-    const hasCost = Number(sub.segment_cost) > 0;
-    return `
-        <div class="relative flex items-center gap-2 py-1.5 last:pb-0 border-b border-slate-50 last:border-none">
-            <span class="text-[10px] font-black theme-text-pink tabular-nums text-right w-8 shrink-0">${sub.time || '--:--'}</span>
-            <div class="w-5 flex justify-center shrink-0">${dotHtml}</div>
-            <span class="text-[12px] font-black ${isGoal ? 'text-slate-900' : 'text-slate-600'} flex-1 min-w-0 truncate">${stopName}</span>
-            <span class="text-[9px] font-black text-slate-300 italic w-6 text-center shrink-0">${sub.seg !== undefined ? `S${sub.seg}` : ''}</span>
-            <span class="text-[10px] font-black theme-text-pink tabular-nums w-12 text-right shrink-0">${hasCost ? '¥' + Number(sub.segment_cost).toLocaleString() : ''}</span>
-        </div>`;
-
-}else if (fuelType === 'shopping') {
-                                    return `
-                                        <div class="relative flex items-start gap-3 py-4 first:pt-2">
-                                            <div class="w-2 h-2 rounded-full bg-slate-200 mt-4 shrink-0 shadow-[0_0_0_4px_white]"></div>
-                                            <div class="flex-1 bg-white p-5 rounded-[1.8rem] border border-slate-100 shadow-sm">
-                                                <div class="flex justify-between items-start mb-1">
-                                                    <span class="text-[10px] font-black theme-text-pink tabular-nums">${sub.time || '--:--'}</span>
-                                                    <div class="flex items-center gap-1.5">
-                                                        <span class="text-[9px] font-black px-2 py-1 bg-pink-50 theme-text-pink rounded-md">¥${(sub.price || 0).toLocaleString()}</span>
-                                                        <span class="text-[9px] text-slate-300 font-black">x${sub.quantity || 1}</span>
-                                                    </div>
-                                                </div>
-                                                <h5 class="text-[11px] font-black text-slate-700">${sub.name}</h5>
-                                                <p class="text-[9px] text-slate-400 mt-2 font-black">📍 ${sub.store || '未指定商店'}</p>
-                                            </div>
-                                        </div>`;
-                                } else {
-                                    // 標準巢狀行程 (Nested Matrix)
-                                    // 標準巢狀行程 (Nested Matrix)
-                                    return `
-                                        <div class="border-b border-slate-50 last:border-none">
-                                            <div class="flex items-center gap-2 py-1.5">
-                                                <span class="text-[10px] font-black theme-text-pink tabular-nums text-right w-8 shrink-0">${sub.time || '--:--'}</span>
-                                                <div class="w-2 h-2 rounded-full bg-slate-200 shrink-0"></div>
-                                                <span class="text-[12px] font-bold text-slate-600 flex-1 min-w-0 leading-snug">${sub.task || sub.location || ''}</span>
-                                                ${sub.expense && sub.expense !== '0' ? `<span class="text-[10px] font-black theme-text-pink tabular-nums shrink-0">¥${Number(sub.expense).toLocaleString()}</span>` : ''}
-                                            </div>
-                                            ${sub.move ? `<div class="text-[10px] text-slate-400 italic pb-1.5" style="padding-left:52px;">↳ ${sub.move}</div>` : ''}
-                                        </div>`;
-                                }
-                            }).join('')}
+                            <h4 style="font-size:15px;font-weight:700;color:#1a1a1a;line-height:1.4;word-break:break-word;margin:0;">
+                                ${mainNode.location || mainNode.task || '新節點'}
+                            </h4>
                         </div>
-                    </details>
+
+                        <!-- 子節點 -->
+                        ${subHtml ? `
+                        <div style="padding:0 12px 10px;border-top:0.5px solid #F1EFE8;">
+                            ${subHtml}
+                        </div>` : ''}
+                    </div>
                 </div>
-            </div>
-        `;
+            </div>`;
     }).join('');
 
-    return `
-        <div class="tree-container space-y-0 animate-fade-in px-1 pt-6">
-            ${nodesHtml}
-            <div class="mt-2 p-7 rounded-[2.5rem] shadow-xl relative overflow-hidden" 
-                 style="background-color: var(--theme-shadow); border: 1px solid var(--theme-primary); opacity: 0.95;">
-                <div class="absolute -right-4 -top-4 opacity-5 text-6xl italic font-black" style="color: var(--theme-primary)">STAT</div>
-                <div class="grid grid-cols-2 gap-6">
-                    <div class="border-l-2 pl-4" style="border-color: var(--theme-primary); opacity: 0.8;">
-                        <p class="text-[8px] font-bold uppercase text-slate-500">節點總量</p>
-                        <p class="text-2xl font-black text-slate-800">${schedules.length}</p>
+    const statHtml = `
+        <div style="display:flex;gap:0;">
+            <div style="width:38px;flex-shrink:0;"></div>
+            <div style="flex:1;padding:0 0 20px 6px;">
+                <div style="background:#FBEAF0;border-radius:14px;border:0.5px solid #F4C0D1;padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div style="border-left:2px solid #D4537E;padding-left:10px;">
+                        <div style="font-size:9px;font-weight:700;color:#B4B2A9;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">節點總量</div>
+                        <div style="font-size:22px;font-weight:800;color:#1a1a1a;">${schedules.length}</div>
                     </div>
-                    <div class="border-l-2 pl-4" style="border-color: var(--theme-primary);">
-                        <p class="text-[8px] font-bold uppercase text-slate-500">預估開銷</p>
-                        <p class="text-2xl font-black tabular-nums" style="color: var(--theme-primary)">¥${totalCost.toLocaleString()}</p>
+                    <div style="border-left:2px solid #D4537E;padding-left:10px;">
+                        <div style="font-size:9px;font-weight:700;color:#B4B2A9;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">預估開銷</div>
+                        <div style="font-size:22px;font-weight:800;color:#D4537E;font-variant-numeric:tabular-nums;">¥${totalCost.toLocaleString()}</div>
                     </div>
                 </div>
             </div>
-        </div>
-    `;
+        </div>`;
+
+    return `<div style="padding: 8px 12px 0;">${nodesHtml}${statHtml}</div>`;
 },
 
 /** 🚄 子函數 A：交通路網導通 (V2026.ULTRA 符號校準版) */
@@ -2176,7 +2159,7 @@ _processNestedScheduleFuel(subNodes, mainNode) {
         </details>`;
 },
 
-renderScheduleItem(tripId, dayIndex, item, itemIndex) {
+renderScheduleItem(tripId, dayIndex, item, itemIndex, isLast = false) {
     const engine = this;
     let detailContent = "";
 
@@ -2190,54 +2173,149 @@ renderScheduleItem(tripId, dayIndex, item, itemIndex) {
         detailContent = engine.renderTransportFuel(item.memo, nodeId);
     } else if (currentStyle === 'image') {
         detailContent = `
-            <div class="mt-3 space-y-3 animate-fade-in">
-                ${item.memo ? `<p style="font-size: 11px; font-weight: 500; color: #444441; padding: 0 4px; line-height: 1.7;">${item.memo}</p>` : ''}
-                ${item.imageUrl ? `<div style="border-radius: 14px; overflow: hidden; border: 0.5px solid #E2E8F0;"><img src="${item.imageUrl}" class="w-full max-h-80 object-cover"></div>` : ''}
+            <div style="margin-top: 10px;">
+                ${item.memo ? `<p style="font-size: 12px; font-weight: 500; color: #444441; line-height: 1.7; margin-bottom: 8px;">${item.memo}</p>` : ''}
+                ${item.imageUrl ? `<div style="border-radius: 12px; overflow: hidden; border: 0.5px solid #E2E8F0;"><img src="${item.imageUrl}" style="width:100%; max-height:280px; object-fit:cover; display:block;"></div>` : ''}
             </div>`;
     } else if (currentStyle === 'shopping') {
         detailContent = engine._renderShoppingFuelCards(item, dayIndex, itemIndex);
     } else {
         detailContent = hasJsonFuel
             ? engine.renderItineraryFuel(item.memo)
-            : `<p style="font-size: 12px; font-weight: 500; color: #444441; line-height: 1.7; margin-top: 10px; padding: 0 4px;">${item.memo || '未填寫行程備註'}</p>`;
+            : (item.memo ? `<p style="font-size: 12px; font-weight: 500; color: #444441; line-height: 1.7; margin-top: 8px;">${item.memo}</p>` : '');
     }
 
     const isShopping = currentStyle === 'shopping';
+    const isTransport = currentStyle === 'transport';
+
+    const dotColor  = isTransport ? '#185FA5' : isShopping ? '#2C2C2A' : '#D4537E';
+    const timeColor = isTransport ? '#185FA5' : isShopping ? '#2C2C2A' : '#D4537E';
 
     return `
-        <div id="${nodeId}" class="schedule-card group animate-fade-in mb-3 relative"
-             style="
-                 background: white;
-                 border-radius: 14px;
-                 padding: 16px;
-                 border: 0.5px solid #E2E8F0;
-                 transition: border-color 0.3s;
-                 overflow: hidden;
-             "
-             onmouseenter="this.style.borderColor='#D4537E'"
-             onmouseleave="this.style.borderColor='#E2E8F0'">
+        <div id="${nodeId}" class="schedule-card animate-fade-in"
+             style="display: flex; gap: 0; position: relative;">
 
-            <div class="flex justify-between items-start">
-                <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+            <!-- ── 左側時間軸軌道 ── -->
+            <div style="
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                width: 28px;
+                flex-shrink: 0;
+                padding-top: 14px;
+            ">
+                <span style="
+                    font-size: 9px;
+                    font-weight: 800;
+                    color: ${timeColor};
+                    font-variant-numeric: tabular-nums;
+                    letter-spacing: -0.03em;
+                    line-height: 1;
+                    margin-bottom: 6px;
+                    text-align: center;
+                    width: 100%;
+                ">${item.time || '--:--'}</span>
 
-                    <!-- 標頭：時間 + SHOPPING badge + 標題 -->
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span style="
-                            font-size: 11px; font-weight: 800; font-style: italic;
-                            color: #D4537E; background: #FBEAF0;
-                            padding: 2px 10px; border-radius: 6px;
-                            white-space: nowrap; flex-shrink: 0;
-                            font-variant-numeric: tabular-nums;
-                        ">${item.time || '--:--'}</span>
+                <div style="
+                    width: 10px; height: 10px;
+                    border-radius: 50%;
+                    border: 2px solid ${dotColor};
+                    background: white;
+                    flex-shrink: 0;
+                    z-index: 1;
+                    position: relative;
+                ">
+                    <div style="
+                        position: absolute;
+                        top: 50%; left: 50%;
+                        transform: translate(-50%, -50%);
+                        width: 4px; height: 4px;
+                        border-radius: 50%;
+                        background: ${dotColor};
+                    "></div>
+                </div>
 
-                        ${isShopping ? `
-                        <span style="
-                            font-size: 9px; font-weight: 800;
-                            background: #2C2C2A; color: white;
-                            padding: 2px 8px; border-radius: 4px;
-                            letter-spacing: 0.08em; flex-shrink: 0;
-                        ">SHOPPING</span>` : ''}
+                ${!isLast ? `
+                <div style="
+                    width: 1.5px;
+                    flex: 1;
+                    min-height: 24px;
+                    background: linear-gradient(to bottom, ${dotColor}40, #E8E5DE);
+                    margin-top: 4px;
+                "></div>` : ''}
+            </div>
 
+            <!-- ── 右側內容卡片 ── -->
+            <div style="
+                flex: 1;
+                padding: 10px 0 20px 6px;
+                min-width: 0;
+            ">
+                <div style="
+                    background: white;
+                    border-radius: 14px;
+                    border: 0.5px solid #E8E5DE;
+                    overflow: hidden;
+                    position: relative;
+                ">
+                    <!-- 右上角操作按鈕：絕對定位，不佔內容寬度 -->
+                    <div style="
+                        position: absolute;
+                        top: 8px; right: 8px;
+                        display: flex;
+                        flex-direction: row;
+                        gap: 4px;
+                        z-index: 2;
+                    ">
+                        <button onclick="App.copyNodeJsonToClipboard('${tripId}', ${dayIndex}, ${itemIndex})"
+                                style="
+                                    width: 26px; height: 26px;
+                                    display: flex; align-items: center; justify-content: center;
+                                    background: #F1EFE8; color: #888780;
+                                    border-radius: 7px; border: none; cursor: pointer;
+                                    transition: all 0.15s;
+                                "
+                                ontouchstart="this.style.background='#EAF3DE';this.style.color='#3B6D11'"
+                                ontouchend="this.style.background='#F1EFE8';this.style.color='#888780'"
+                                onmouseenter="this.style.background='#EAF3DE';this.style.color='#3B6D11'"
+                                onmouseleave="this.style.background='#F1EFE8';this.style.color='#888780'"
+                                title="複製 JSON">
+                            <i class="fa-solid fa-copy" style="font-size: 10px;"></i>
+                        </button>
+                        <button onclick="App.promptEditSchedule('${tripId}', ${dayIndex}, ${itemIndex})"
+                                style="
+                                    width: 26px; height: 26px;
+                                    display: flex; align-items: center; justify-content: center;
+                                    background: #F1EFE8; color: #888780;
+                                    border-radius: 7px; border: none; cursor: pointer;
+                                    transition: all 0.15s;
+                                "
+                                ontouchstart="this.style.background='#FBEAF0';this.style.color='#D4537E'"
+                                ontouchend="this.style.background='#F1EFE8';this.style.color='#888780'"
+                                onmouseenter="this.style.background='#FBEAF0';this.style.color='#D4537E'"
+                                onmouseleave="this.style.background='#F1EFE8';this.style.color='#888780'">
+                            <i class="fa-solid fa-pen" style="font-size: 10px;"></i>
+                        </button>
+                    </div>
+
+                    <!-- 標題區：右側留出按鈕空間 -->
+                    <div style="padding: 10px 68px 0 10px;">
+                        <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 4px; flex-wrap: wrap;">
+                            ${isTransport ? `
+                            <span style="
+                                font-size: 9px; font-weight: 800;
+                                background: #185FA5; color: white;
+                                padding: 1px 6px; border-radius: 4px;
+                                letter-spacing: 0.08em;
+                            ">TRANSPORT</span>` : ''}
+                            ${isShopping ? `
+                            <span style="
+                                font-size: 9px; font-weight: 800;
+                                background: #2C2C2A; color: white;
+                                padding: 1px 6px; border-radius: 4px;
+                                letter-spacing: 0.08em;
+                            ">SHOPPING</span>` : ''}
+                        </div>
                         <h4 style="
                             font-size: 14px; font-weight: 700;
                             color: #1a1a1a; line-height: 1.4;
@@ -2245,131 +2323,104 @@ renderScheduleItem(tripId, dayIndex, item, itemIndex) {
                         ">${item.location || item.task || (isShopping ? '購物清單' : '新節點')}</h4>
                     </div>
 
-                    <!-- 內容區 -->
-                    <div class="content-body w-full">
+                    <!-- 內容區：全寬，按鈕疊在上方不影響 -->
+                    ${detailContent ? `
+                    <div style="padding: 6px 10px 10px;">
                         ${detailContent}
-                    </div>
-                </div>
-
-                <!-- 操作按鈕（hover 顯示） -->
-                <div class="absolute top-4 right-4 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <button onclick="App.copyNodeJsonToClipboard('${tripId}', ${dayIndex}, ${itemIndex})"
-                            style="
-                                width: 32px; height: 32px;
-                                display: flex; align-items: center; justify-content: center;
-                                background: #EAF3DE; color: #3B6D11;
-                                border-radius: 10px; border: none; cursor: pointer;
-                                transition: all 0.2s;
-                            "
-                            onmouseenter="this.style.background='#639922';this.style.color='white'"
-                            onmouseleave="this.style.background='#EAF3DE';this.style.color='#3B6D11'"
-                            title="複製燃料 JSON">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
-                            <path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
-                        </svg>
-                    </button>
-
-                    <button onclick="App.promptEditSchedule('${tripId}', ${dayIndex}, ${itemIndex})"
-                            style="
-                                width: 32px; height: 32px;
-                                display: flex; align-items: center; justify-content: center;
-                                background: #F1EFE8; color: #888780;
-                                border-radius: 10px; border: none; cursor: pointer;
-                                transition: all 0.2s;
-                            "
-                            onmouseenter="this.style.background='#D4537E';this.style.color='white'"
-                            onmouseleave="this.style.background='#F1EFE8';this.style.color='#888780'">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
-                            <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                        </svg>
-                    </button>
+                    </div>` : '<div style="height: 10px;"></div>'}
                 </div>
             </div>
         </div>`;
 },
 
-
 // ============================================================
 // 💰 [Expense & Statistics] 開銷與統計視圖
 // ============================================================
 
-/** 📊 視圖演進：開銷統計頁面 (V2026.ULTRA 幣別對焦切換版) */
 renderExpenseStats(container, trip, chartData, stats) {
     if (!container || !trip) return;
 
-    // 🚀 1. 物理路徑計算：生成 SVG 長餅圖 (維持原有的高品質動畫)
-    const segments = chartData.map(d => `
-        <circle class="origin-center transition-all duration-1000 ease-out"
-                r="15.915" cx="16.915" cy="16.915" fill="none" 
-                stroke="${d.color}" stroke-width="3"
-                stroke-dasharray="${d.percentage} ${100 - d.percentage}"
-                transform="rotate(${d.offset * 3.6 - 90})"
-                style="transform-origin: center;">
-        </circle>
-    `).join('');
-
-    // 🚀 2. 數據解構：提取對焦狀態 (預設 TWD)
     const focus = state.expenseFocus || 'TWD';
     const totalTWD = stats.totalTWD || 0;
     const totalJPY = stats.grandTotal || 0;
 
+    const primaryTotal = focus === 'TWD'
+        ? `$${Math.round(totalTWD).toLocaleString()}`
+        : `¥${Math.round(totalJPY).toLocaleString()}`;
+    const secondaryTotal = focus === 'TWD'
+        ? `¥${Math.round(totalJPY).toLocaleString()}`
+        : `$${Math.round(totalTWD).toLocaleString()}`;
+
+    // 總覽色塊
+    const stackedBar = chartData.map((d, i) => {
+        const isFirst = i === 0;
+        const isLast  = i === chartData.length - 1;
+        return `<div style="
+            flex: ${d.percentage};
+            background: ${d.color};
+            border-radius: ${isFirst ? '5px 0 0 5px' : isLast ? '0 5px 5px 0' : '0'};
+            min-width: 2px;
+        "></div>`;
+    }).join('');
+
+    // 分類列
+    const categoryRows = chartData.map(d => this._renderExpenseCategory(trip, d)).join('');
+
     container.innerHTML = `
-        <div class="space-y-8 animate-fade-in pb-32">
-            <div class="flex justify-between items-end px-2">
-                <div>
-                    <h2 class="text-xl font-black text-slate-800 tracking-tight"></h2>
-                    <p class="text-[10px] font-black theme-text-pink uppercase tracking-widest mt-1">Detailed Analytics Ledger</p>
-                </div>
-                
-                <div class="flex bg-slate-100 p-1 rounded-full border border-slate-200 shadow-inner scale-90">
-                    <button onclick="App.switchCurrencyFocus('TWD')" 
-                            class="px-4 py-1.5 rounded-full text-[9px] font-black transition-all duration-300 ${focus === 'TWD' ? 'theme-bg text-white shadow-sm' : 'text-slate-400'}">TWD</button>
-                    <button onclick="App.switchCurrencyFocus('JPY')" 
-                            class="px-4 py-1.5 rounded-full text-[9px] font-black transition-all duration-300 ${focus === 'JPY' ? 'theme-bg text-white shadow-sm' : 'text-slate-400'}">JPY</button>
+        <div style="padding-bottom: 128px;" class="animate-fade-in">
+
+            <!-- ── 頂部幣別切換 ── -->
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:0 2px 14px;">
+                <div style="font-size:9px;font-weight:700;color:#B4B2A9;text-transform:uppercase;letter-spacing:0.15em;">Detailed Analytics Ledger</div>
+                <div style="display:flex;background:#F1EFE8;border-radius:20px;padding:3px;gap:2px;">
+                    <button onclick="App.switchCurrencyFocus('TWD')"
+                            style="padding:4px 14px;border-radius:16px;font-size:10px;font-weight:800;border:none;cursor:pointer;letter-spacing:0.04em;transition:all 0.2s;
+                            background:${focus === 'TWD' ? '#D4537E' : 'transparent'};
+                            color:${focus === 'TWD' ? 'white' : '#B4B2A9'};">TWD</button>
+                    <button onclick="App.switchCurrencyFocus('JPY')"
+                            style="padding:4px 14px;border-radius:16px;font-size:10px;font-weight:800;border:none;cursor:pointer;letter-spacing:0.04em;transition:all 0.2s;
+                            background:${focus === 'JPY' ? '#D4537E' : 'transparent'};
+                            color:${focus === 'JPY' ? 'white' : '#B4B2A9'};">JPY</button>
                 </div>
             </div>
 
-            <div class="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-50 flex flex-col items-center gap-12">
-                <div class="relative w-56 h-56 shrink-0">
-                    <svg viewBox="0 0 33.83 33.83" class="w-full h-full drop-shadow-sm">
-                        <circle stroke="#f8f9fa" stroke-width="3" fill="none" r="15.915" cx="16.915" cy="16.915"></circle>
-                        ${segments}
-                    </svg>
-                    
-                    <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
-                        <span class="text-[9px] font-black text-slate-300 uppercase tracking-tighter italic">Total ${focus}</span>
-                        <div class="flex flex-col items-center -space-y-1">
-                            <span class="text-3xl font-black text-slate-800 tabular-nums animate-fade-in">
-                                ${focus === 'TWD' ? `$${Math.round(totalTWD).toLocaleString()}` : `¥${Math.round(totalJPY).toLocaleString()}`}
-                            </span>
-                            <span class="text-[11px] font-black theme-text-pink tabular-nums opacity-60">
-                                ${focus === 'TWD' ? `¥${Math.round(totalJPY).toLocaleString()}` : `$${Math.round(totalTWD).toLocaleString()}`}
-                            </span>
-                        </div>
-                        <p class="text-[8px] font-bold text-slate-400 mt-2 uppercase tracking-[0.2em] border-t border-slate-100 pt-1">Primary Sector</p>
+            <!-- ── 主卡片：總覽 + 分類列 ── -->
+            <div style="background:white;border-radius:16px;border:0.5px solid #E8E5DE;overflow:hidden;margin-bottom:12px;">
+
+                <!-- 總金額 -->
+                <div style="padding:16px 16px 12px;">
+                    <div style="font-size:9px;font-weight:700;color:#B4B2A9;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Total ${focus}</div>
+                    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px;">
+                        <span style="font-size:30px;font-weight:800;color:#1a1a1a;font-variant-numeric:tabular-nums;line-height:1;">${primaryTotal}</span>
+                        <span style="font-size:13px;font-weight:600;color:#D4537E;opacity:0.6;font-variant-numeric:tabular-nums;">${secondaryTotal}</span>
+                    </div>
+
+                    <!-- Stacked bar -->
+                    <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;gap:1.5px;">
+                        ${stackedBar}
                     </div>
                 </div>
-                
-                <div class="w-full space-y-4">
-                    ${chartData.map(d => this._renderExpenseCategory(trip, d)).join('')}
+
+                <!-- 分隔線 -->
+                <div style="height:0.5px;background:#F1EFE8;"></div>
+
+                <!-- 分類列 -->
+                <div style="padding:8px 0;">
+                    ${categoryRows}
                 </div>
             </div>
 
-            <div class="p-6 bg-slate-50/50 rounded-[2rem] border border-slate-100">
-                <p class="text-[10px] text-slate-400 font-medium leading-relaxed italic text-center">
-                    * 點擊右上方切換器可變更幣別。
-                </p>
+            <div style="text-align:center;font-size:10px;color:#D3D1C7;font-style:italic;padding:4px 0 12px;">
+                點擊分類可展開明細
             </div>
         </div>
     `;
 },
 
-/** 🧬 子函數 A：渲染分類折疊組件 (V2026.ULTRA 天數軌道歸一化版) */
 _renderExpenseCategory(trip, categoryData) {
     const details = this._collectExpenseDetails(trip, categoryData.id);
     const focus = (window.state && window.state.expenseFocus) ? window.state.expenseFocus : 'TWD';
-    
-    // 🚀 1. 累算引擎：支援 Bundle 穿透累加
+
     const totals = details.reduce((acc, item) => {
         if (item.isBundle) {
             acc.twd += item.products.reduce((sum, p) => sum + (p.convertedCost || 0), 0);
@@ -2381,57 +2432,66 @@ _renderExpenseCategory(trip, categoryData) {
         return acc;
     }, { twd: 0, jpy: 0 });
 
-    const displayAmount = focus === 'TWD' 
-        ? `$${Math.round(totals.twd).toLocaleString()}` 
+    const displayAmount = focus === 'TWD'
+        ? `$${Math.round(totals.twd).toLocaleString()}`
         : `¥${Math.round(totals.jpy).toLocaleString()}`;
 
-    // 🚀 2. 天數聚合機制：封殺冗餘標籤，建立垂直導航感
+    // 明細列表
     let currentDay = null;
     const listHtml = details.length > 0 ? details.map(item => {
         const isNewDay = item.day !== currentDay;
         currentDay = item.day;
-
         return `
-            <div class="day-group-sector ${isNewDay ? 'mt-6' : 'mt-0'}">
-                ${isNewDay ? `
-                    <!-- 🕒 天數軌道首標：僅在跨天時點亮 -->
-                    <div class="flex items-center gap-2 mb-3 px-1">
-                        <div class="w-8 h-8 bg-white rounded-xl border border-slate-100 flex items-center justify-center text-[10px] font-black theme-text-pink shadow-sm">
-                            D${item.day}
-                        </div>
-                        <div class="h-px flex-1 bg-slate-100/50"></div>
-                    </div>
-                ` : ''}
-                
-                <!-- 📄 內容細項：對齊縮排軌道 -->
-                <div class="pl-10">
-                    ${this._renderExpenseItemRowClean(item)}
-                </div>
+            ${isNewDay ? `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 14px 4px;">
+                <div style="width:26px;height:26px;background:#FBEAF0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#D4537E;flex-shrink:0;">D${item.day}</div>
+                <div style="flex:1;height:0.5px;background:#F1EFE8;"></div>
+            </div>` : ''}
+            <div style="padding:0 14px;">
+                ${this._renderExpenseItemRowClean(item)}
             </div>`;
-    }).join('') : `<p class="text-[10px] text-slate-300 italic text-center py-8 uppercase tracking-widest">No Details Found</p>`;
+    }).join('') : `
+        <div style="padding:20px 16px;text-align:center;">
+            <p style="font-size:10px;color:#D3D1C7;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;">No Details Found</p>
+        </div>`;
 
     return `
-        <details class="group bg-slate-50/50 rounded-[2.2rem] border border-transparent open:bg-white open:border-slate-100 open:shadow-sm transition-all duration-300">
-            <summary class="flex items-center justify-between p-6 cursor-pointer list-none outline-none">
-                <div class="flex items-center gap-4">
-                    <div class="w-2.5 h-2.5 rounded-full shadow-sm" style="background-color: ${categoryData.color}"></div>
-                    <div class="flex flex-col">
-                        <span class="text-sm font-black text-slate-700">${categoryData.label}</span>
-                        <span class="text-[9px] font-black text-slate-300 italic uppercase">${categoryData.percentage.toFixed(1)}% Weight</span>
-                    </div>
+        <details class="expense-cat-group">
+            <summary style="
+                display:flex;align-items:center;justify-content:space-between;
+                padding:10px 16px;cursor:pointer;list-style:none;outline:none;
+                user-select:none;
+            "
+            onmouseenter="this.style.background='#F8F7F4'"
+            onmouseleave="this.style.background='transparent'">
+                <!-- 左側：圓點 + 名稱 + 百分比 -->
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="width:8px;height:8px;border-radius:50%;background:${categoryData.color};flex-shrink:0;"></div>
+                    <span style="font-size:13px;font-weight:700;color:#1a1a1a;">${categoryData.label}</span>
+                    <span style="font-size:10px;color:#B4B2A9;font-weight:600;">${categoryData.percentage.toFixed(1)}%</span>
                 </div>
-                <div class="flex items-center gap-5">
-                    <span class="text-sm font-black text-slate-800 tabular-nums animate-fade-in">${displayAmount}</span>
-                    <div class="text-slate-300 group-open:rotate-180 transition-transform duration-300 text-[10px]">▼</div>
+
+                <!-- 右側：金額 + 箭頭 -->
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:13px;font-weight:800;color:#1a1a1a;font-variant-numeric:tabular-nums;">${displayAmount}</span>
+                    <span style="font-size:10px;color:#D3D1C7;transition:transform 0.2s;">▼</span>
                 </div>
             </summary>
-            
-            <div class="px-6 pb-8 space-y-2 animate-fade-in">
+
+            <!-- 進度條 -->
+            <div style="padding:0 16px 10px;">
+                <div style="height:4px;background:#F1EFE8;border-radius:2px;overflow:hidden;">
+                    <div style="width:${categoryData.percentage}%;height:100%;background:${categoryData.color};border-radius:2px;"></div>
+                </div>
+            </div>
+
+            <!-- 明細 -->
+            <div style="border-top:0.5px solid #F1EFE8;padding-bottom:8px;">
                 ${listHtml}
             </div>
-        </details>
-    `;
+        </details>`;
 },
+
 
 /** 🧬 輔助組件：渲染去標籤化的細項行 (V2026.ULTRA 全量對焦版) */
 _renderExpenseItemRowClean(item) {
@@ -4363,41 +4423,68 @@ _renderShoppingFuelCards(item, dayIndex, itemIndex) {
 // ============================================================
 
 
-/** 🏭 [Refinery-Main] 備選精煉廠主進入點 (V2026.ULTRA 跨頁持久化版) */
 renderBacklogPage(container, backlogs) {
     if (!state.backlogContext) state.backlogContext = { page: 1, searchQuery: '' };
-    const { pagedItems, totalPages, currentPage, totalItems } = App.getFilteredBacklogs(backlogs);
     
+    // 🚀 確保 perPage 跟當前模式同步（防止重新整理後跑掉）
+    const viewMode = localStorage.getItem('tf_backlog_view_mode') || 'card';
+    state.backlogContext.perPage = viewMode === 'compact' ? 20 : 5;
+
+    const { pagedItems, totalPages, currentPage, totalItems } = App.getFilteredBacklogs(backlogs);
+
     const searchInputEl = document.getElementById('backlog-search-input');
     const isSearchFocused = document.activeElement === searchInputEl;
     const cursorStart = searchInputEl ? searchInputEl.selectionStart : 0;
-
     const cities = [...new Set(backlogs.map(b => b.city))].sort();
     const activeCity = localStorage.getItem('tf_backlog_city_focus') || '全部';
     const activeCat = localStorage.getItem('tf_backlog_cat_focus') || '全部';
 
+    // 🚀 模式切換按鈕
+    const viewToggleHtml = `
+        <div style="display: flex; gap: 4px; background: #F1F5F9; border-radius: 10px; padding: 3px;">
+            <button onclick="viewEngine.setBacklogViewMode('card')"
+                    style="padding: 5px 10px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s;
+                           background: ${viewMode === 'card' ? 'white' : 'transparent'};
+                           box-shadow: ${viewMode === 'card' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'};">
+                <i class="fa-solid fa-table-cells-large" style="font-size: 13px; color: ${viewMode === 'card' ? '#D4537E' : '#94A3B8'};"></i>
+            </button>
+            <button onclick="viewEngine.setBacklogViewMode('compact')"
+                    style="padding: 5px 10px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s;
+                           background: ${viewMode === 'compact' ? 'white' : 'transparent'};
+                           box-shadow: ${viewMode === 'compact' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'};">
+                <i class="fa-solid fa-list" style="font-size: 13px; color: ${viewMode === 'compact' ? '#D4537E' : '#94A3B8'};"></i>
+            </button>
+        </div>`;
+
     container.innerHTML = `
         <div class="px-2 pt-4 pb-32 animate-fade-in space-y-6">
-            ${this._renderBacklogHeader()}
-            
+            ${this._renderBacklogHeader(viewToggleHtml)}
+
             <div class="px-2">
                 <div class="relative group">
                     <input type="text" id="backlog-search-input"
-                           oninput="App.searchBacklog(this.value)" 
+                           oninput="App.searchBacklog(this.value)"
                            value="${state.backlogContext.searchQuery}"
-                           placeholder="搜尋靈感標題..." 
+                           placeholder="搜尋靈感標題..."
                            class="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-[14px] font-black text-slate-900 focus:ring-2 focus:ring-pink-100 outline-none shadow-inner transition-all">
                     <span class="absolute left-4 top-1/2 -translate-y-1/2 opacity-30 text-lg">🔍</span>
                 </div>
             </div>
 
             ${this._renderBacklogNav(cities, activeCity, activeCat)}
-            
+
+            <!-- 🚀 全選按鈕 -->
+
+            ${this._renderBacklogSelectAll(pagedItems, totalItems)}
+
             ${this._renderBacklogPagination(currentPage, totalPages, totalItems, 'top')}
 
-            <div id="backlog-cards-sector" class="space-y-4 min-h-[300px]">
-                ${pagedItems.length > 0 
-                    ? pagedItems.map(item => this._renderBacklogCard(item)).join('') 
+            <div id="backlog-cards-sector" class="${viewMode === 'compact' ? 'space-y-1' : 'space-y-4'} min-h-[300px]">
+                ${pagedItems.length > 0
+                    ? pagedItems.map(item => viewMode === 'compact'
+                        ? this._renderBacklogCardCompact(item)
+                        : this._renderBacklogCard(item)
+                    ).join('')
                     : `<div class="py-20 text-center opacity-30 text-[10px] font-black uppercase tracking-[0.3em]">No Cargo in this sector</div>`}
             </div>
 
@@ -4412,12 +4499,176 @@ renderBacklogPage(container, backlogs) {
             newSearchInput.focus();
             newSearchInput.setSelectionRange(cursorStart, cursorStart);
         }
-        
         if (typeof this.updateRefineryFAB === 'function') {
             this.updateRefineryFAB();
-            console.log(`🏁 [UI-Rebound] 換頁導通完畢 | FAB 狀態已對焦`);
         }
     });
+},
+
+_renderBacklogSelectAll(pagedItems, totalItems) {
+    const manager = window.backlogManager || (typeof backlogManager !== 'undefined' ? backlogManager : null);
+    const stagedSize = manager?._stagedSelection?.size || 0;
+    const allPagedSelected = pagedItems.length > 0 && pagedItems.every(item => manager?._stagedSelection?.has(String(item.id)));
+
+    return `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px; min-height: 36px;">
+
+            <!-- 左側：全選按鈕 -->
+            <button onclick="viewEngine._toggleSelectAllPage()"
+                    style="display: flex; align-items: center; gap: 6px; padding: 6px 14px;
+                           border-radius: 999px; border: 1px solid ${allPagedSelected ? '#F4C0D1' : '#E2E8F0'};
+                           background: ${allPagedSelected ? '#FBEAF0' : '#F8FAFC'};
+                           cursor: pointer; transition: all 0.15s;">
+                <i class="fa-${allPagedSelected ? 'solid' : 'regular'} fa-circle-check"
+                   style="font-size: 13px; color: ${allPagedSelected ? '#D4537E' : '#94A3B8'};"></i>
+                <span style="font-size: 12px; font-weight: 500; color: ${allPagedSelected ? '#D4537E' : '#64748B'};">
+                    ${allPagedSelected ? '取消全選' : '全選本頁'}
+                </span>
+            </button>
+
+            <!-- 右側：動態區 -->
+            <div style="display: flex; align-items: center; gap: 6px;">
+
+                <!-- 已選數量（有選取才顯示）-->
+                <span id="select-bar-count" style="font-size: 11px; color: #94A3B8;">
+                    ${stagedSize > 0 ? `已選 <strong style="color: #D4537E;">${stagedSize}</strong> 張` : ''}
+                </span>
+
+                <!-- 操作按鈕（有選取才顯示）-->
+                <div id="select-bar-actions" style="display: ${stagedSize > 0 ? 'flex' : 'none'}; align-items: center; gap: 6px;">
+                    <button onclick="window.backlogManager?.clearSelection(); viewEngine.updateRefineryFAB();"
+                            style="padding: 6px 12px; border-radius: 999px; border: 1px solid #E2E8F0;
+                                   background: #F8FAFC; cursor: pointer; font-size: 11px; font-weight: 500; color: #64748B;">
+                        清除
+                    </button>
+                    <button onclick="viewEngine.triggerProjection()"
+                            style="padding: 6px 12px; border-radius: 999px; border: none;
+                                   background: #1E293B; color: white; cursor: pointer;
+                                   font-size: 11px; font-weight: 500;">
+                        <i class="ti ti-calendar-plus" style="font-size: 12px; margin-right: 3px;"></i>排入
+                    </button>
+                    <button onclick="viewEngine.triggerAIPlanner()"
+                            style="padding: 6px 12px; border-radius: 999px; border: none;
+                                   background: #D4537E; color: white; cursor: pointer;
+                                   font-size: 11px; font-weight: 500;">
+                        <i class="ti ti-sparkles" style="font-size: 12px; margin-right: 3px;"></i>AI
+                    </button>
+                </div>
+
+                <!-- 未選時提示 -->
+                <span id="select-bar-hint" style="font-size: 11px; color: #CBD5E1; display: ${stagedSize > 0 ? 'none' : 'block'};">
+                    點選卡片可多選
+                </span>
+
+            </div>
+        </div>`;
+},
+
+_toggleSelectAllPage() {
+    const manager = window.backlogManager || (typeof backlogManager !== 'undefined' ? backlogManager : null);
+    if (!manager) return;
+
+    // 從當前渲染的卡片抓 ID
+    const pagedCards = [...document.querySelectorAll('.backlog-card[data-id]')];
+    const allSelected = pagedCards.every(card => manager._stagedSelection.has(card.dataset.id));
+
+    pagedCards.forEach(card => {
+        const id = card.dataset.id;
+        if (allSelected) {
+            // 取消全選
+            manager.toggleSelection(id, false);
+            card.classList.remove('selected');
+            card.style.border = '1px solid #E2E8F0';
+            card.style.background = 'white';
+            card.style.boxShadow = 'none';
+            card.style.transform = 'translateY(0)';
+        } else {
+            // 全選
+            manager.toggleSelection(id, true);
+            card.classList.add('selected');
+            card.style.border = '2px solid #D4537E';
+            card.style.background = '#FBEAF0';
+            card.style.boxShadow = '0 4px 16px rgba(212,83,126,0.2)';
+            card.style.transform = 'translateY(-2px)';
+        }
+    });
+
+    // 重新渲染全選按鈕狀態
+    if (window.App) App.navigateTo('backlog');
+},
+
+// 🚀 模式切換並重新渲染
+setBacklogViewMode(mode) {
+    localStorage.setItem('tf_backlog_view_mode', mode);
+
+    if (!state.backlogContext) state.backlogContext = { page: 1, searchQuery: '' };
+    state.backlogContext.perPage = mode === 'compact' ? 20 : 5; // 🚀 直接覆蓋 state
+    state.backlogContext.page = 1;
+
+    if (window.App) App.navigateTo('backlog');
+},
+
+
+_renderBacklogCardCompact(item) {
+    const manager = window.backlogManager || (typeof backlogManager !== 'undefined' ? backlogManager : null);
+    const isStaged = manager?._stagedSelection?.has(String(item.id)) || false;
+    const projectedDays = this._calculateProjectedDays(item.name) || [];
+
+    const catColors = {
+        '食': { bg: '#FBEAF0', color: '#D4537E' },
+        '玩': { bg: '#E6F1FB', color: '#185FA5' },
+        '購': { bg: '#EAF3DE', color: '#3B6D11' },
+        '行': { bg: '#FAEEDA', color: '#854F0B' },
+        '住': { bg: '#F1EFE8', color: '#5F5E5A' },
+        '醫': { bg: '#FCEBEB', color: '#A32D2D' },
+        '史': { bg: '#F1EFE8', color: '#5F5E5A' },
+        '景': { bg: '#EAF3DE', color: '#3B6D11' },
+        '泉': { bg: '#E6F1FB', color: '#185FA5' },
+    };
+    const cat = item.category || '食';
+    const style = catColors[cat] || { bg: '#F1EFE8', color: '#5F5E5A' };
+
+    const dayTags = projectedDays.map(d =>
+        `<span style="font-size: 10px; color: #D4537E; background: #FBEAF0;
+                      padding: 1px 5px; border-radius: 4px; font-weight: 500; flex-shrink: 0;">D${d}</span>`
+    ).join('');
+
+    return `
+        <div class="backlog-card ${isStaged ? 'selected' : ''}"
+             id="card-${item.id}"
+             data-id="${item.id}"
+             onclick="viewEngine.toggleBacklogSelect('${item.id}')"
+             style="display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+                    border-radius: 10px; border: 1px solid ${isStaged ? '#F4C0D1' : '#E2E8F0'};
+                    background: ${isStaged ? '#FBEAF0' : 'white'};
+                    cursor: pointer; transition: all 0.15s;">
+
+            <input type="checkbox" class="sub-item-check hidden" id="check-${item.id}"
+                   value="${item.id}" ${isStaged ? 'checked' : ''}>
+
+            <!-- 分類標籤 -->
+            <span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+                         background: ${style.bg}; color: ${style.color}; flex-shrink: 0;">
+                ${cat}
+            </span>
+
+            <!-- 城市 -->
+            <span style="font-size: 11px; color: #94A3B8; flex-shrink: 0; min-width: 32px;">
+                ${item.city || '—'}
+            </span>
+
+            <!-- 名稱 -->
+            <p style="font-size: 13px; font-weight: 600; color: #1E293B; margin: 0;
+                      flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${item.name}
+            </p>
+
+            <!-- Day 標籤 -->
+            <div style="display: flex; gap: 3px; flex-shrink: 0;">
+                ${dayTags}
+            </div>
+
+        </div>`;
 },
 
 /** 📑 [Sub-Component] 渲染分頁指示器 (雙向對稱佈署版) */
@@ -4450,16 +4701,14 @@ _renderBacklogPagination(current, total, totalItems, position) {
 },
 
 
-/** 🧪 [Sub-Component] 渲染精煉廠頭部 (手機友善整合版) */
-_renderBacklogHeader() {
+/** 🧪 [Sub-Component] 渲染精煉廠頭部 */
+_renderBacklogHeader(viewToggleHtml = '') {
     const manager = window.backlogManager || (typeof backlogManager !== 'undefined' ? backlogManager : null);
     const selectionSize = manager?._stagedSelection?.size || 0;
     const totalItems = manager?.items?.length || 0;
 
-    const trip = state.trips?.find(t => t.id === state.activeTripId);
-    const hasDraft = Array.isArray(trip?.aiPlannerDrafts)
-    ? trip.aiPlannerDrafts.length > 0
-    : !!trip?.aiPlannerDraft;
+    // 🚀 草稿改從全域讀取
+    const hasDraft = (App._getDrafts?.() || []).length > 0;
 
     return `
         <div class="px-2 pt-2 pb-2 animate-fade-in">
@@ -4469,6 +4718,9 @@ _renderBacklogHeader() {
                     <p id="backlog-header-subtitle" class="text-[11px] text-slate-400 mt-0.5">${totalItems} 筆</p>
                 </div>
                 <div class="flex items-center gap-2">
+
+                    <!-- 🚀 顯示模式切換 -->
+                    ${viewToggleHtml}
 
                     <!-- 更多選單 -->
                     <button id="btn-more-menu"
@@ -4562,6 +4814,7 @@ _renderBacklogHeader() {
         </div>`;
 },
 
+
 /** 🤖 AI 草稿列表渲染 */
 _renderAIPlannerDraftList(drafts) {
     if (!drafts || drafts.length === 0) {
@@ -4587,9 +4840,25 @@ _renderAIPlannerDraftList(drafts) {
         const cardCount = draft.selectedCards?.length || 0;
         const unscheduled = draft.result?.unscheduled?.length || 0;
 
-        // 前兩天有景點的天
+// 前兩天有景點的天
         const activeDays = days.filter(d => d.cards?.length > 0).slice(0, 2);
         const remainingDays = days.filter(d => d.cards?.length > 0).length - activeDays.length;
+
+        // 🚀 用全域 backlog 補強小卡名稱
+        const globalItems = window.backlogManager?.items || [];
+        const cardMap = Object.fromEntries(globalItems.map(g => [String(g.id), g]));
+
+        const catColors = {
+            '食': { bg: '#FBEAF0', border: '#F4C0D1', text: '#D4537E' },
+            '玩': { bg: '#E6F1FB', border: '#B8D4F0', text: '#185FA5' },
+            '購': { bg: '#EAF3DE', border: '#B8D9A0', text: '#3B6D11' },
+            '行': { bg: '#FAEEDA', border: '#F0C990', text: '#854F0B' },
+            '住': { bg: '#F1EFE8', border: '#D4CFBF', text: '#5F5E5A' },
+            '醫': { bg: '#FCEBEB', border: '#F0B8B8', text: '#A32D2D' },
+            '史': { bg: '#F1EFE8', border: '#D4CFBF', text: '#5F5E5A' },
+            '景': { bg: '#EAF3DE', border: '#B8D9A0', text: '#3B6D11' },
+            '泉': { bg: '#E6F1FB', border: '#B8D4F0', text: '#185FA5' },
+        };
 
         return `
             <div style="background: var(--color-background-primary); border-radius: 16px;
@@ -4616,12 +4885,23 @@ _renderAIPlannerDraftList(drafts) {
                             ${cardCount} 張小卡 · ${days.length} 天規劃${unscheduled > 0 ? ` · ${unscheduled} 張未排入` : ''}
                         </p>
                         <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                            ${activeDays.map(d => `
-                                <span style="font-size: 11px; background: ${bgColor}; color: ${textColor};
-                                             padding: 2px 8px; border-radius: 6px; font-weight: 500;">
-                                    Day ${d.day} ${d.theme || ''}
-                                </span>
-                            `).join('')}
+                            ${activeDays.map(d => {
+                                // 🚀 每天的小卡標籤
+                                const dayCards = (d.cards || []).map(cardEntry => {
+                                    const cardId = typeof cardEntry === 'object' ? cardEntry.id : cardEntry;
+                                    // 先從全域找，找不到再從草稿快照找
+                                    const card = cardMap[String(cardId)]
+                                        || (draft.selectedCards || []).find(s => String(s.id) === String(cardId));
+                                    if (!card) return '';
+                                    const style = catColors[card.category] || { bg: '#F1EFE8', border: '#D4CFBF', text: '#5F5E5A' };
+                                    return `<span style="font-size: 11px; background: ${style.bg};
+                                                         color: ${style.text}; border: 1px solid ${style.border};
+                                                         padding: 2px 8px; border-radius: 6px; font-weight: 500;">
+                                                ${card.name}
+                                            </span>`;
+                                }).join('');
+                                return dayCards;
+                            }).join('')}
                             ${remainingDays > 0 ? `
                                 <span style="font-size: 11px; background: var(--color-background-secondary);
                                              color: var(--color-text-tertiary); padding: 2px 8px; border-radius: 6px;">
@@ -4769,76 +5049,100 @@ _renderImportActions() {
 },
 
 
-/** 📡 [Sub-Component] 渲染 AI 戰略偵蒐表單 (V2026.ULTRA 視覺權重校準版) */
 _renderReconForm() {
-    // 💡 職人診斷：調整標籤與輸入內容的明度比，封殺視覺雜訊。
+    const activeTrip = state.trips.find(t => t.id === state.activeTripId);
+    const activeCity = activeTrip?.city || "日本";
+
     return `
-    <div class="space-y-6 text-left animate-fade-in pb-4">
-        <div class="grid grid-cols-2 gap-4 px-1">
-            <!-- 1. 起始基準點 (全寬 + 標籤增益 + 內容降壓) -->
-            <div class="col-span-2 space-y-2">
-                <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">1. 起始基準點</label>
-                <input type="text" id="recon-base" 
-                       placeholder="例如：新風館 / 京都車站 / 烏丸御池站 6 號出口" 
-                       value=""
-                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-medium text-sm text-slate-400 shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all">
-                <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">※ 請輸入具體地標，以利執行精確半徑計算</p>
-            </div>
+    <div style="display: flex; flex-direction: column; gap: 18px; padding-bottom: 8px;">
 
-            <!-- 2. 交通手段 -->
-            <div class="space-y-2">
-                <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">2. 交通手段</label>
-                <input type="text" id="recon-mobility" placeholder="例如：步行 / 公車" 
-                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-medium text-sm text-slate-400 shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all">
-            </div>
+        <!-- 1. 起始基準點 -->
+        <div>
+            <p style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px;">起始基準點</p>
+            <input type="text" id="recon-base"
+                   placeholder="例如：新風館 / 京都車站 / 烏丸御池站 6 號出口"
+                   style="width: 100%; padding: 14px 16px; border-radius: 12px;
+                          border: 1.5px solid #E2E8F0; background: #F1F5F9;
+                          font-size: 15px; color: var(--color-text-primary);
+                          outline: none; box-sizing: border-box;">
+            <p style="font-size: 11px; color: var(--color-text-secondary); margin-top: 5px; padding-left: 2px;">
+                輸入具體地標，以利執行精確半徑計算
+            </p>
+        </div>
 
-            <!-- 3. 預期時間 -->
-            <div class="space-y-2">
-                <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">3. 預期時間</label>
-                <input type="text" id="recon-duration" placeholder="例如：10 分鐘" 
-                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-medium text-sm text-slate-400 shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all">
+        <!-- 2+3. 交通 + 時間 -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+                <p style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px;">交通手段</p>
+                <input type="text" id="recon-mobility"
+                       placeholder="步行 / 公車"
+                       style="width: 100%; padding: 14px 16px; border-radius: 12px;
+                              border: 1.5px solid #E2E8F0; background: #F1F5F9;
+                              font-size: 15px; color: var(--color-text-primary);
+                              outline: none; box-sizing: border-box;">
             </div>
-
-            <!-- 4. 偵蒐風格 (全寬) -->
-            <div class="col-span-2 space-y-2">
-                <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">4. 搜尋風格與偏好</label>
-                <input type="text" id="recon-style" placeholder="例如：隱藏版甜點 / 職人咖啡" 
-                       class="w-full bg-slate-50/80 border-none rounded-2xl p-4 font-medium text-sm text-slate-400 shadow-inner outline-none focus:ring-2 focus:ring-pink-100 transition-all">
+            <div>
+                <p style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px;">預期時間</p>
+                <input type="text" id="recon-duration"
+                       placeholder="10 分鐘"
+                       style="width: 100%; padding: 14px 16px; border-radius: 12px;
+                              border: 1.5px solid #E2E8F0; background: #F1F5F9;
+                              font-size: 15px; color: var(--color-text-primary);
+                              outline: none; box-sizing: border-box;">
             </div>
         </div>
 
-        <!-- 🚀 指令合成中繼站 -->
-        <div class="px-1">
-            <button onclick="backlogManager.copyReconPrompt()" 
-                    class="w-full theme-bg text-white py-4 rounded-2xl font-black text-xs shadow-lg shadow-pink-100 active:scale-95 transition-all flex items-center justify-center gap-2">
-                <span>✨</span> 複製 AI 偵蒐指令
-            </button>
+        <!-- 4. 搜尋風格 -->
+        <div>
+            <p style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px;">搜尋風格與偏好</p>
+            <input type="text" id="recon-style"
+                   placeholder="例如：隱藏版甜點 / 職人咖啡"
+                   style="width: 100%; padding: 14px 16px; border-radius: 12px;
+                          border: 1.5px solid #E2E8F0; background: #F1F5F9;
+                          font-size: 15px; color: var(--color-text-primary);
+                          outline: none; box-sizing: border-box;">
         </div>
 
-        <!-- 5. 燃料注入區 (字體對齊細體淺灰) -->
-        <div class="space-y-2 px-1">
-            <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">5. 注入 AI 回應燃料 (JSON)</label>
-            <textarea id="recon-json-input" 
-                      class="w-full h-40 bg-slate-50/80 border-none rounded-[1.5rem] p-5 text-[11px] font-mono font-medium text-slate-400 outline-none shadow-inner custom-scrollbar focus:ring-2 focus:ring-pink-100 transition-all" 
+        <!-- 複製指令按鈕 -->
+        <button onclick="backlogManager.copyReconPrompt()"
+                style="width: 100%; padding: 14px; border-radius: 12px; border: none;
+                       background: #D4537E; color: white; font-size: 15px; font-weight: 600;
+                       cursor: pointer; display: flex; align-items: center;
+                       justify-content: center; gap: 8px;">
+            <i class="fa-solid fa-wand-magic-sparkles" style="font-size: 14px;" aria-hidden="true"></i>
+            複製 AI 偵蒐指令
+        </button>
+
+        <!-- 5. 注入 JSON -->
+        <div>
+            <p style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px;">注入 AI 回應燃料（JSON）</p>
+            <textarea id="recon-json-input" rows="6"
+                      style="width: 100%; padding: 14px 16px; border-radius: 12px;
+                             border: 1.5px solid #E2E8F0; background: #F1F5F9;
+                             font-size: 13px; font-family: monospace;
+                             color: var(--color-text-primary); outline: none;
+                             box-sizing: border-box; resize: none; line-height: 1.7;"
                       placeholder="在此貼上 AI 回傳的 JSON 陣列..."></textarea>
         </div>
+
     </div>`;
 },
 
-
-/** 🛠️ [Action-Sector] 偵蒐模態框按鈕組 (對齊截圖 1:2 物理比例) */
 _renderReconActions() {
     return `
-        <div class="flex w-full gap-3 px-1">
-            <button onclick="App.modalRemove('ai-recon-modal')" 
-                    class="flex-1 py-4 bg-slate-50 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">
-                取消
-            </button>
-            <button onclick="backlogManager.saveReconFuel()" 
-                    class="flex-[2] py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg shadow-pink-100 active:scale-95 transition-all">
-                儲存靈感
-            </button>
-        </div>`;
+        <button onclick="App.modalRemove('ai-recon-modal')"
+                style="flex: 1; padding: 11px; border-radius: 12px;
+                       border: 0.5px solid var(--color-border-tertiary);
+                       background: #F1F5F9; font-size: 14px; font-weight: 500;
+                       color: var(--color-text-secondary); cursor: pointer;">
+            取消
+        </button>
+        <button onclick="backlogManager.saveReconFuel()"
+                style="flex: 2; padding: 11px; border-radius: 12px; border: none;
+                       background: #D4537E; color: white; font-size: 14px;
+                       font-weight: 600; cursor: pointer;">
+            儲存靈感
+        </button>`;
 },
 
 /** 🧪 [Sub-Component] 渲染折疊式篩選器 (限額顯示版) */
@@ -5116,11 +5420,61 @@ _renderAIPlannerSettings(selectedCards, trip) {
     const hotelName = hotel?.name || null;
     const totalDays = trip.days?.length || 5;
 
-    // 🚀 樣式常數
     const activeStyle = `border: 2px solid #D4537E; background: #FBEAF0;`;
     const inactiveStyle = `border: 1px solid #E2E8F0; background: #F8FAFC;`;
     const activeRadio = `width: 18px; height: 18px; border-radius: 50%; background: #D4537E; display: flex; align-items: center; justify-content: center; flex-shrink: 0;`;
     const inactiveRadio = `width: 18px; height: 18px; border-radius: 50%; border: 2px solid #CBD5E1; background: white; flex-shrink: 0;`;
+
+    const catIconMap = {
+        '食': 'fa-solid fa-utensils',
+        '玩': 'fa-solid fa-torii-gate',
+        '購': 'fa-solid fa-bag-shopping',
+        '行': 'fa-solid fa-train',
+        '住': 'fa-solid fa-bed',
+        '醫': 'fa-solid fa-kit-medical',
+        '史': 'fa-solid fa-landmark',
+        '景': 'fa-solid fa-mountain',
+        '泉': 'fa-solid fa-droplet',
+    };
+    const catColors = {
+        '食': { bg: '#FBEAF0', color: '#D4537E' },
+        '玩': { bg: '#E6F1FB', color: '#185FA5' },
+        '購': { bg: '#EAF3DE', color: '#3B6D11' },
+        '行': { bg: '#FAEEDA', color: '#854F0B' },
+        '住': { bg: '#F1EFE8', color: '#5F5E5A' },
+        '醫': { bg: '#FCEBEB', color: '#A32D2D' },
+        '史': { bg: '#F1EFE8', color: '#5F5E5A' },
+        '景': { bg: '#EAF3DE', color: '#3B6D11' },
+        '泉': { bg: '#E6F1FB', color: '#185FA5' },
+    };
+
+    // 🚀 必去小卡列表渲染
+    const mustGoCardsHtml = selectedCards.map(c => {
+        const cat = catColors[c.category] || { bg: '#F1EFE8', color: '#5F5E5A' };
+        const icon = catIconMap[c.category] || 'fa-solid fa-map-pin';
+        return `
+            <div id="mustgo-card-${c.id}"
+                 onclick="App._toggleMustGo('${c.id}')"
+                 style="display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+                        border-radius: 10px; border: 1px solid #E2E8F0; background: white;
+                        cursor: pointer; transition: all 0.15s; margin-bottom: 6px;">
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: ${cat.bg};
+                            display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i class="${icon}" style="font-size: 12px; color: ${cat.color};"></i>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                    <p style="font-size: 13px; font-weight: 600; color: #1E293B; margin: 0;
+                              white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.name}</p>
+                    <p style="font-size: 11px; color: #94A3B8; margin: 0;">${c.category} · ${c.city || ''}</p>
+                </div>
+                <div id="mustgo-star-${c.id}"
+                     style="width: 28px; height: 28px; border-radius: 8px; background: #F1F5F9;
+                            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+                            transition: all 0.15s;">
+                    <i class="fa-regular fa-star" style="font-size: 13px; color: #CBD5E1;"></i>
+                </div>
+            </div>`;
+    }).join('');
 
     return `
         <div style="display: flex; flex-direction: column; gap: 0;">
@@ -5128,6 +5482,35 @@ _renderAIPlannerSettings(selectedCards, trip) {
             <p style="font-size: 11px; color: var(--color-text-tertiary); margin: 0 0 14px; line-height: 1.6;">
                 已選 ${selectedCards.length} 張小卡 · ${trip.city || ''} ${totalDays} 天
             </p>
+
+<!-- 0. 必去標記 -->
+            <div style="margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <p style="font-size: 12px; font-weight: 500; color: var(--color-text-secondary); margin: 0;">⭐ 必去景點</p>
+                    <span style="font-size: 11px; color: #94A3B8;">點擊星星標記，AI 不得剔除</span>
+                </div>
+
+                <!-- 🚀 搜尋 bar -->
+                <div style="position: relative; margin-bottom: 8px;">
+                    <i class="fa-solid fa-magnifying-glass"
+                       style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+                              font-size: 12px; color: #CBD5E1; pointer-events: none;"></i>
+                    <input type="text"
+                           id="mustgo-search"
+                           placeholder="搜尋景點名稱..."
+                           oninput="App._filterMustGoList(this.value)"
+                           style="width: 100%; padding: 8px 12px 8px 32px; border-radius: 10px;
+                                  border: 1px solid #E2E8F0; background: #F8FAFC;
+                                  font-size: 12px; color: #1E293B; outline: none;
+                                  box-sizing: border-box; transition: border 0.15s;"
+                           onfocus="this.style.border='1px solid #F4C0D1'"
+                           onblur="this.style.border='1px solid #E2E8F0'">
+                </div>
+
+                <div id="mustgo-list" style="max-height: 220px; overflow-y: auto; padding-right: 2px;">
+                    ${mustGoCardsHtml}
+                </div>
+            </div>
 
             <!-- 1. 起訖點 -->
             <div style="margin-bottom: 16px;">
@@ -5243,23 +5626,60 @@ _renderAIPlannerSettings(selectedCards, trip) {
                 </p>
             </div>
 
+            <!-- 5. 分類分散 -->
+            <div style="margin-top: 12px; padding: 12px; background: var(--color-background-primary); border: 1.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md);">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="flex: 1;">
+                        <p style="font-size: 12px; font-weight: 500; color: var(--color-text-secondary); margin: 0 0 3px;">5. 分類平衡模式</p>
+                        <p id="spread-mode-desc" style="font-size: 11px; color: var(--color-text-tertiary); margin: 0; line-height: 1.6;">
+                           關閉：純依地理位置排列，不限制同天分類
+                        </p>
+                    </div>
+                    <div onclick="App._toggleSpreadMode()"
+                         id="spread-mode-toggle"
+                         style="width: 44px; height: 26px; border-radius: 999px; background: #E2E8F0;
+                                display: flex; align-items: center; padding: 3px; cursor: pointer;
+                                transition: all 0.2s; flex-shrink: 0; margin-left: 12px;">
+                        <div id="spread-mode-knob"
+                             style="width: 20px; height: 20px; border-radius: 50%; background: white;
+                                    box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: all 0.2s; transform: translateX(0px);"></div>
+                    </div>
+                </div>
+            </div>
+
         </div>`;
 },
+
 
 /** 🤖 [AI-Planner] 渲染預覽畫面 */
 _renderAIPlannerPreview(result, trip, selectedCards, draftId = null) {
     const cardMap = Object.fromEntries(selectedCards.map(c => [String(c.id), c]));
     const daysHtml = (result.days || []).map((day, dayIndex) => {
-        const cards = (day.cards || []).map(id => {
-            const card = cardMap[String(id)];
-            if (!card) return '';
-            const catColors = {
-                '食': '#FBEAF0', '玩': '#E6F1FB', '購': '#EAF3DE',
-                '行': '#FAEEDA', '住': '#F1EFE8', '醫': '#FCEBEB'
-            };
-            const bg = catColors[card.category] || '#F1EFE8';
-            return `<span style="display: inline-flex; align-items: center; padding: 7px 14px; border-radius: 999px; background: ${bg}; font-size: 14px; color: var(--color-text-primary); white-space: nowrap; margin: 4px;">${card.name}</span>`;
-        }).join('');
+        const cards = (day.cards || []).map(cardEntry => {
+    const cardId = typeof cardEntry === 'object' ? cardEntry.id : cardEntry;
+    const suggestedTime = typeof cardEntry === 'object' ? cardEntry.suggested_time : null;
+    const card = cardMap[String(cardId)];
+    if (!card) return '';
+
+    const catColors = {
+        '食': { bg: '#FBEAF0', border: '#F4C0D1' },
+        '玩': { bg: '#E6F1FB', border: '#B8D4F0' },
+        '購': { bg: '#EAF3DE', border: '#B8D9A0' },
+        '行': { bg: '#FAEEDA', border: '#F0C990' },
+        '住': { bg: '#F1EFE8', border: '#D4CFBF' },
+        '醫': { bg: '#FCEBEB', border: '#F0B8B8' }
+    };
+    const style = catColors[card.category] || { bg: '#F1EFE8', border: '#D4CFBF' };
+
+    return `<span style="display: inline-flex; align-items: center; padding: 7px 14px;
+                         border-radius: 999px; background: ${style.bg};
+                         border: 1px solid ${style.border};
+                         font-size: 14px; color: var(--color-text-primary);
+                         white-space: nowrap; margin: 4px;">
+                ${suggestedTime ? `<span style="font-size: 11px; color: #94A3B8; margin-right: 6px;">${suggestedTime}</span>` : ''}
+                ${card.name}
+            </span>`;
+}).join('');
         const isEmpty = (day.cards || []).length === 0;
 
         // 🚀 有 draftId 且該天有小卡才顯示「進入細項規劃」按鈕
@@ -5439,7 +5859,7 @@ _renderBacklogCard(item) {
     const projectedDays = this._calculateProjectedDays(item.name) || [];
     const manager = window.backlogManager || (typeof backlogManager !== 'undefined' ? backlogManager : null);
     const isStaged = manager?._stagedSelection?.has(String(item.id)) || false;
-    const isProjected = item.status === 'projected' || projectedDays.length > 0;
+    const isProjected = projectedDays.length > 0;
 
     const borderColor = isStaged ? '#F4C0D1' : '#E2E8F0';
     const bgColor = isStaged ? '#FBEAF0' : 'white';
@@ -5613,52 +6033,40 @@ toggleBacklogSelect(id) {
     if (navigator.vibrate) navigator.vibrate(5);
 },
 
-/** 📊 [加固版] 更新投射按鈕與頭部狀態 (手機友善整合版) */
 updateRefineryFAB() {
+    // 🚀 FAB 永久隱藏
     const fab = document.getElementById('refinery-fab');
-    const selectCountEl = document.getElementById('select-count');
-    const selectModeBtn = document.getElementById('btn-select-mode');
-    const subtitleEl = document.getElementById('backlog-header-subtitle');
+    if (fab) {
+        fab.style.transform = 'translateY(100%)';
+        fab.style.opacity = '0';
+        fab.style.pointerEvents = 'none';
+    }
 
     const manager = window.backlogManager || (typeof backlogManager !== 'undefined' ? backlogManager : null);
     const selectionSize = manager?._stagedSelection?.size || 0;
     const totalItems = manager?.items?.length || 0;
 
-    // 🚀 1. 同步底部操作列
-    if (fab) {
-        if (selectionSize > 0) {
-            fab.style.transform = 'translateY(0%)';
-            fab.style.opacity = '1';
-            fab.style.pointerEvents = 'auto';
-            if (selectCountEl) selectCountEl.innerText = `已選 ${selectionSize} 張`;
-        } else {
-            fab.style.transform = 'translateY(100%)';
-            fab.style.opacity = '0';
-            fab.style.pointerEvents = 'none';
-        }
-    }
-
-    // 🚀 2. 同步頭部「選取」按鈕文字與樣式
-    if (selectModeBtn) {
-        if (selectionSize > 0) {
-            selectModeBtn.textContent = `完成 (${selectionSize})`;
-            selectModeBtn.classList.add('theme-bg', 'text-white');
-            selectModeBtn.classList.remove('bg-slate-100', 'text-slate-500');
-        } else {
-            selectModeBtn.textContent = '選取';
-            selectModeBtn.classList.remove('theme-bg', 'text-white');
-            selectModeBtn.classList.add('bg-slate-100', 'text-slate-500');
-        }
-    }
-
-    // 🚀 3. 同步頭部副標題（即時顯示已選數量）
+    // 🚀 同步頭部副標題
+    const subtitleEl = document.getElementById('backlog-header-subtitle');
     if (subtitleEl) {
         subtitleEl.innerHTML = selectionSize > 0
             ? `${totalItems} 筆 · <span class="theme-text-pink font-medium">已選 ${selectionSize}</span>`
             : `${totalItems} 筆`;
     }
 
-    // 🚀 4. 相容性：更新隱藏的 badge 節點（供舊邏輯使用）
+    // 🚀 直接更新 bar 內的文字，不重新渲染整個 bar
+    const countEl = document.getElementById('select-bar-count');
+    if (countEl) countEl.innerHTML = selectionSize > 0
+        ? `已選 <strong style="color: #D4537E;">${selectionSize}</strong> 張`
+        : '';
+
+    const actionEl = document.getElementById('select-bar-actions');
+    if (actionEl) actionEl.style.display = selectionSize > 0 ? 'flex' : 'none';
+
+    const hintEl = document.getElementById('select-bar-hint');
+    if (hintEl) hintEl.style.display = selectionSize > 0 ? 'none' : 'block';
+
+    // 🚀 相容性
     const badge = document.getElementById('selection-badge-count');
     if (badge) badge.innerText = selectionSize;
 
@@ -5774,158 +6182,311 @@ setRefineryMode(mode) {
     if (navigator.vibrate) navigator.vibrate(8);
 },
 
-/** 🧪 [Refinery-UI] 渲染採集表單 (結構修正與主題對焦版) */
 _renderAddBacklogForm() {
     const activeTrip = state.trips.find(t => t.id === state.activeTripId);
     const activeCity = activeTrip?.city || "";
-    const themeColor = activeTrip?.color || 'var(--theme-primary)'; 
-    const categories = ['食', '玩', '購', '行', '住', '醫'];
 
-    // 🚀 1. 注入動態樣式軌道 (確保 peer-checked 100% 點火主題色)
-    const dynamicStyle = `
-        <style>
-            #backlog-cat-selector input:checked + div {
-                background-color: ${themeColor} !important;
-                color: white !important;
-                box-shadow: 0 10px 15px -3px ${themeColor}44 !important;
-            }
-        </style>
-    `;
+    const savedCats = JSON.parse(localStorage.getItem('tf_backlog_categories') || '[]');
+    const defaultCats = ['食', '玩', '購', '行', '住', '醫', '史', '景', '泉'];
+    const allCats = [...new Set([...defaultCats, ...savedCats.filter(c => c !== '全部')])];
+    const visibleCats = allCats.slice(0, 5);
+    const hiddenCats = allCats.slice(5);
+
+    const catColors = {
+        '食': { bg: '#FBEAF0', border: '#F4C0D1', color: '#D4537E' },
+        '玩': { bg: '#E6F1FB', border: '#B8D4F0', color: '#185FA5' },
+        '購': { bg: '#EAF3DE', border: '#B8D9A0', color: '#3B6D11' },
+        '行': { bg: '#FAEEDA', border: '#F0C990', color: '#854F0B' },
+        '住': { bg: '#F1EFE8', border: '#D4CFBF', color: '#5F5E5A' },
+        '醫': { bg: '#FCEBEB', border: '#F0B8B8', color: '#A32D2D' },
+        '史': { bg: '#F1EFE8', border: '#D4CFBF', color: '#5F5E5A' },
+        '景': { bg: '#EAF3DE', border: '#B8D9A0', color: '#3B6D11' },
+        '泉': { bg: '#E6F1FB', border: '#B8D4F0', color: '#185FA5' },
+    };
+
+    // 🚀 第一個分類預設 active
+    const firstCat = visibleCats[0] || '食';
+    const firstStyle = catColors[firstCat];
+
+    const renderChip = (cat, isActive = false, isHidden = false) => {
+        const s = catColors[cat] || { bg: '#F1EFE8', border: '#D4CFBF', color: '#5F5E5A' };
+        return `
+        <div onclick="viewEngine._selectAddCat(this, '${cat}')"
+             data-cat="${cat}"
+             style="padding: 8px 16px; border-radius: 999px; cursor: pointer;
+                    transition: all 0.15s; white-space: nowrap;
+                    display: ${isHidden ? 'none' : 'inline-flex'};
+                    align-items: center; gap: 6px;
+                    border: 1.5px solid ${isActive ? s.border : 'var(--color-border-tertiary)'};
+                    background: ${isActive ? s.bg : 'var(--color-background-primary)'};
+                    font-size: 15px; font-weight: ${isActive ? '700' : '500'};
+                    color: ${isActive ? s.color : 'var(--color-text-secondary)'};">
+            <span style="width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+                         background: ${isActive ? s.color : '#CBD5E1'};
+                         transition: all 0.15s;"></span>
+            ${cat}
+        </div>`;
+    };
 
     return `
-        <div class="space-y-8 text-left pb-4 animate-fade-in">
-            ${dynamicStyle}
-            
-            <div class="flex justify-between items-center mb-2">
-                <label class="text-[14px] font-black text-slate-900 uppercase tracking-widest px-1">注入模式</label>
-                <div class="flex bg-slate-100 p-1.5 rounded-2xl gap-1">
-                    <button onclick="viewEngine.toggleImportMode('single')" id="mode-single" 
-                            class="px-5 py-2 bg-white rounded-xl text-[14px] font-black shadow-sm transition-all text-slate-900">單筆採集</button>
-                    <button onclick="viewEngine.toggleImportMode('batch')" id="mode-batch" 
-                            class="px-5 py-2 rounded-xl text-[14px] font-black text-slate-400 transition-all">批量注入</button>
+        <div style="display: flex; flex-direction: column; gap: 18px; padding-bottom: 8px;">
+
+            <!-- 模式切換 -->
+            <div style="display: flex; border-radius: 12px; overflow: hidden;
+                        border: 1px solid var(--color-border-tertiary);">
+                <button onclick="viewEngine.toggleImportMode('single')" id="mode-single"
+                        style="flex: 1; padding: 10px; border: none; border-right: 1px solid var(--color-border-tertiary);
+                               font-size: 14px; font-weight: 600; cursor: pointer;
+                               background: #D4537E; color: white;">單筆採集</button>
+                <button onclick="viewEngine.toggleImportMode('batch')" id="mode-batch"
+        style="flex: 1; padding: 10px; border: none;
+               font-size: 14px; font-weight: 500; cursor: pointer;
+               background: #F1F5F9;  <!-- 🚀 改這裡，不是 primary -->
+               color: var(--color-text-secondary);">批量注入</button>
+            </div>
+
+            <!-- 城市 -->
+            <div>
+                <p style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px;">城市</p>
+                <div id="city-display-row"
+                     style="display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+                            border-radius: 12px; background: var(--color-background-secondary);
+                            border: 1px solid var(--color-border-tertiary);">
+                    <i class="fa-solid fa-location-dot" style="font-size: 15px; color: #D4537E;" aria-hidden="true"></i>
+                    <span id="city-display-val"
+                          style="font-size: 16px; font-weight: 600; color: var(--color-text-primary); flex: 1;">
+                        ${activeCity || '未設定'}
+                    </span>
+                    <span style="font-size: 12px; color: var(--color-text-secondary);">行程偵測</span>
+                    <span onclick="viewEngine._toggleCityEdit()"
+                          style="font-size: 13px; color: #D4537E; cursor: pointer; font-weight: 500; margin-left: 4px;">修改</span>
+                </div>
+                <input type="text" id="backlog-city" value="${activeCity}"
+                       style="display: none; margin-top: 8px; width: 100%; padding: 12px 14px;
+                              border-radius: 12px; border: 1.5px solid #F4C0D1;
+                              background: var(--color-background-primary); font-size: 16px;
+                              color: var(--color-text-primary); outline: none; box-sizing: border-box;">
+            </div>
+
+            <!-- 分類 -->
+            <div>
+                <p style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px;">分類</p>
+                <div id="cat-selector" data-selected="${firstCat}"
+                     style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    ${visibleCats.map((c, i) => renderChip(c, i === 0)).join('')}
+                    ${hiddenCats.map(c => renderChip(c, false, true)).join('')}
+                    ${hiddenCats.length > 0 ? `
+                    <button id="cat-expand-btn" onclick="viewEngine._toggleCatExpand()"
+                            style="padding: 8px 14px; border-radius: 999px;
+                                   border: 1.5px solid var(--color-border-tertiary);
+                                   background: var(--color-background-primary);
+                                   font-size: 14px; color: var(--color-text-secondary);
+                                   cursor: pointer; white-space: nowrap; font-weight: 500;">
+                        +${hiddenCats.length}
+                    </button>` : ''}
                 </div>
             </div>
 
-            <div class="space-y-4">
-                <label class="text-[14px] font-black text-slate-900 uppercase tracking-widest px-1">數據屬性</label>
-                <div class="flex flex-wrap gap-3" id="backlog-cat-selector">
-                    ${categories.map(cat => `
-                        <label class="cursor-pointer">
-                            <input type="radio" name="backlog-cat" value="${cat}" class="hidden" ${cat === '食' ? 'checked' : ''}>
-                            <div class="px-6 py-3 bg-slate-100 rounded-2xl text-[16px] font-black text-slate-900 border-2 border-transparent transition-all">
-                                ${cat}
-                            </div>
-                        </label>
-                    `).join('')}
-                </div>
-            </div>
+<!-- 單筆表單 -->
+<div id="import-single-container" style="display: block;">
+    <p style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px;">店名 / 景點名稱</p>
+    <input type="text" id="backlog-name"
+           placeholder="例如：Fuglen Fukuoka"
+           style="width: 100%; padding: 14px 16px; border-radius: 12px;
+                  border: 1.5px solid #E2E8F0;
+                  background: #F1F5F9;
+                  font-size: 16px; color: var(--color-text-primary);
+                  outline: none; box-sizing: border-box;">
+</div>
 
-            <div id="import-single-container" class="space-y-6">
-                <div class="space-y-2">
-                    <label class="text-[14px] font-black text-slate-900 uppercase tracking-widest px-1">店名 / 景點名稱</label>
-                    <input type="text" id="backlog-name" placeholder="例如：FUGLEN FUKUOKA" 
-                           class="w-full bg-slate-50 border-none rounded-[1.8rem] p-5 font-black text-[16px] text-slate-900 focus:ring-2 focus:ring-pink-100 outline-none shadow-inner transition-all">
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-2">
-                        <label class="text-[14px] font-black text-slate-900 uppercase tracking-widest px-1">城市區域</label>
-                        <input type="text" id="backlog-city" value="${activeCity}" 
-                               class="w-full bg-slate-50 border-none rounded-[1.5rem] p-5 font-black text-[16px] text-slate-900 outline-none shadow-inner">
-                    </div>
-                    <div class="space-y-2">
-                        <label class="text-[14px] font-black text-slate-900 uppercase tracking-widest px-1">註記</label>
-                        <input type="text" id="backlog-info" placeholder="位置或特色" 
-                               class="w-full bg-slate-50 border-none rounded-[1.5rem] p-5 font-black text-[16px] text-slate-900 outline-none shadow-inner">
-                    </div>
-                </div>
-            </div>
+<!-- 批量表單 -->
+<div id="import-batch-container" style="display: none;">
+    <p style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px;">多筆靈感（一行一筆）</p>
+    <textarea id="backlog-batch-input" rows="6"
+              oninput="viewEngine._checkBatchDedup(this)"
+              placeholder="Weekenders Coffee&#10;建仁寺&#10;錦市場"
+              style="width: 100%; padding: 14px 16px; border-radius: 12px;
+                     border: 1.5px solid #E2E8F0;
+                     background: #F1F5F9;
+                     font-size: 16px; color: var(--color-text-primary); outline: none;
+                     box-sizing: border-box; resize: none; line-height: 1.8;"></textarea>
+    <div id="batch-dedup-hint"
+         style="display: none; margin-top: 8px; font-size: 13px;
+                color: var(--color-text-secondary); padding: 10px 12px;
+                background: #F1F5F9; border-radius: 10px; line-height: 1.6;"></div>
+</div>
 
-            <div id="import-batch-container" class="hidden space-y-4">
-                <label class="text-[14px] font-black text-slate-900 uppercase tracking-widest px-1 mb-2 block">多筆靈感 (一行一筆)</label>
-                <textarea id="backlog-batch-input" rows="6" 
-                          placeholder="範例:\n京都 Weekenders\n京都 Harbs藤井大丸店\n京都 二條城"
-                          class="w-full bg-slate-50 border-none rounded-[2rem] p-6 font-black text-[16px] text-slate-900 focus:ring-2 focus:ring-pink-100 outline-none shadow-inner leading-relaxed custom-scrollbar"></textarea>
-            </div>
         </div>`;
 },
 
-/** 🎨 [Visual-Logic] 切換採集模式 (V2026.ULTRA 強健加固版) */
+_selectAddCat(el, cat) {
+    // 🚀 先清掉所有晶片的 active 樣式
+    const catColors = {
+        '食': { bg: '#FBEAF0', border: '#F4C0D1', color: '#D4537E' },
+        '玩': { bg: '#E6F1FB', border: '#B8D4F0', color: '#185FA5' },
+        '購': { bg: '#EAF3DE', border: '#B8D9A0', color: '#3B6D11' },
+        '行': { bg: '#FAEEDA', border: '#F0C990', color: '#854F0B' },
+        '住': { bg: '#F1EFE8', border: '#D4CFBF', color: '#5F5E5A' },
+        '醫': { bg: '#FCEBEB', border: '#F0B8B8', color: '#A32D2D' },
+        '史': { bg: '#F1EFE8', border: '#D4CFBF', color: '#5F5E5A' },
+        '景': { bg: '#EAF3DE', border: '#B8D9A0', color: '#3B6D11' },
+        '泉': { bg: '#E6F1FB', border: '#B8D4F0', color: '#185FA5' },
+    };
+
+    document.querySelectorAll('#cat-selector [data-cat]').forEach(c => {
+        c.style.background = 'var(--color-background-primary)';
+        c.style.border = '1.5px solid var(--color-border-tertiary)';
+        c.style.color = 'var(--color-text-secondary)';
+        c.style.fontWeight = '500';
+        const dot = c.querySelector('span');
+        if (dot) dot.style.background = '#CBD5E1';
+    });
+
+    // 🚀 套上選取的顏色
+    const s = catColors[cat] || { bg: '#F1EFE8', border: '#D4CFBF', color: '#5F5E5A' };
+    el.style.background = s.bg;
+    el.style.border = `1.5px solid ${s.border}`;
+    el.style.color = s.color;
+    el.style.fontWeight = '700';
+    const dot = el.querySelector('span');
+    if (dot) dot.style.background = s.color;
+
+    // 🚀 更新 dataset
+    document.getElementById('cat-selector').dataset.selected = cat;
+},
+
+_toggleCityEdit() {
+    const row = document.getElementById('city-display-row');
+    const input = document.getElementById('backlog-city');
+    const isEditing = input.style.display !== 'none';
+    if (isEditing) {
+        // 收起：同步顯示值
+        document.getElementById('city-display-val').textContent = input.value || '未設定';
+        row.style.display = 'flex';
+        input.style.display = 'none';
+    } else {
+        row.style.display = 'none';
+        input.style.display = 'block';
+        input.focus();
+    }
+},
+
+_toggleCatExpand() {
+    const selector = document.getElementById('cat-selector');
+    const allChips = selector.querySelectorAll('[data-cat]');
+    const btn = document.getElementById('cat-expand-btn');
+    const isExpanded = btn.dataset.expanded === 'true';
+
+    // 🚀 第5個之後的全部切換
+    allChips.forEach((chip, idx) => {
+        if (idx >= 5) {
+            chip.style.display = isExpanded ? 'none' : 'inline-flex';
+        }
+    });
+
+    btn.dataset.expanded = isExpanded ? 'false' : 'true';
+    btn.textContent = isExpanded ? `+${allChips.length - 5}` : '收起';
+},
+
+_checkBatchDedup(ta) {
+    const lines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
+    const hint = document.getElementById('batch-dedup-hint');
+    if (!lines.length) { hint.style.display = 'none'; return; }
+
+    const existing = new Set((window.backlogManager?.items || []).map(i => i.name?.trim().toLowerCase()));
+    const dupes = lines.filter(l => existing.has(l.toLowerCase()));
+
+    hint.style.display = 'block';
+    if (dupes.length > 0) {
+        hint.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 7px; border-radius:999px; background:#FAEEDA; color:#854F0B;">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size:10px;" aria-hidden="true"></i> ${dupes.length} 筆重複
+        </span>　${dupes.slice(0, 3).join('、')}${dupes.length > 3 ? '...' : ''} 匯入時將自動跳過`;
+    } else {
+        hint.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 7px; border-radius:999px; background:#EAF3DE; color:#3B6D11;">
+            <i class="fa-solid fa-circle-check" style="font-size:10px;" aria-hidden="true"></i> ${lines.length} 筆
+        </span>　全部為新資料`;
+    }
+},
+
 toggleImportMode(mode) {
     const single = document.getElementById('import-single-container');
     const batch = document.getElementById('import-batch-container');
     const btnS = document.getElementById('mode-single');
     const btnB = document.getElementById('mode-batch');
 
-    // 🛡️ 物理防禦：如果容器不存在，直接中斷點火防止崩潰
     if (!single || !batch) {
-        console.warn("⚠️ [UI-Wait] 輸入容器尚未掛載，攔截切換指令");
+        console.warn("⚠️ [UI-Wait] 輸入容器尚未掛載");
         return;
     }
 
     if (mode === 'batch') {
-        single.classList.add('hidden');
-        batch.classList.remove('hidden');
-        btnB.classList.add('bg-white', 'shadow-sm');
-        btnB.classList.remove('text-slate-400');
-        btnS.classList.remove('bg-white', 'shadow-sm');
-        btnS.classList.add('text-slate-400');
+        single.style.display = 'none';
+        batch.style.display = 'block';
+        // 🚀 顏色對齊初始值
+        btnB.style.background = '#D4537E';
+        btnB.style.color = 'white';
+        btnB.style.fontWeight = '600';
+        btnS.style.background = '#F1F5F9';
+        btnS.style.color = 'var(--color-text-secondary)';
+        btnS.style.fontWeight = '500';
     } else {
-        batch.classList.add('hidden');
-        single.classList.remove('hidden');
-        btnS.classList.add('bg-white', 'shadow-sm');
-        btnS.classList.remove('text-slate-400');
-        btnB.classList.remove('bg-white', 'shadow-sm');
-        btnB.classList.add('text-slate-400');
-    }
-
-    // 🚀 [物理修正]：改用彈性定位，封殺 TypeError
-    // 直接找最近的父層 space-y-5 容器來存放狀態
-    const stateContainer = single.closest('.space-y-5');
-    if (stateContainer) {
-        stateContainer.dataset.importMode = mode;
+        single.style.display = 'block';
+        batch.style.display = 'none';
+        btnS.style.background = '#D4537E';
+        btnS.style.color = 'white';
+        btnS.style.fontWeight = '600';
+        btnB.style.background = '#F1F5F9';
+        btnB.style.color = 'var(--color-text-secondary)';
+        btnB.style.fontWeight = '500';
     }
 },
 
 
-/** 🚀 [Refactor] 採集動作：導入中央分流按鈕 */
+
 _renderAddBacklogActions() {
     return `
-        <button onclick="App.modalRemove('add-backlog-modal')" 
-                class="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all">取消</button>
-        <button onclick="viewEngine.handleBacklogSubmission()" 
-                class="flex-[2] py-4 theme-bg text-white rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">
-            儲存靈感
+        <button onclick="App.modalRemove('add-backlog-modal')"
+                style="flex: 1; padding: 11px; border-radius: 12px;
+                       border: 0.5px solid var(--color-border-tertiary);
+                       background: var(--color-background-secondary);
+                       font-size: 13px; font-weight: 500;
+                       color: var(--color-text-secondary); cursor: pointer;">
+            取消
         </button>
-    `;
+        <button onclick="viewEngine.handleBacklogSubmission()"
+                style="flex: 2; padding: 11px; border-radius: 12px; border: none;
+                       background: #D4537E; color: white;
+                       font-size: 13px; font-weight: 500; cursor: pointer;">
+            儲存靈感
+        </button>`;
 },
 
-/** 🧪 [Refinery-Internal] 處理採集提交 (模式分流) */
 handleBacklogSubmission() {
     const batchContainer = document.getElementById('import-batch-container');
-    const isBatch = batchContainer && !batchContainer.classList.contains('hidden');
+    // 🚀 修正1：改用 style.display 判斷，不用 classList
+    const isBatch = batchContainer && batchContainer.style.display !== 'none';
+
+    // 🚀 修正2：城市統一從 backlog-city input 讀（修改模式）或 display val（未修改）
+    const cityInput = document.getElementById('backlog-city');
+    const cityDisplay = document.getElementById('city-display-val');
+    const city = (cityInput?.style.display !== 'none' 
+        ? cityInput?.value 
+        : cityDisplay?.textContent) || '未分類';
+
+    // 🚀 修正3：分類統一從 dataset 讀
+    const cat = document.getElementById('cat-selector')?.dataset.selected || '食';
 
     if (isBatch) {
-        // 🚀 執行批量注入
-        const rawText = document.getElementById('backlog-batch-input').value.trim();
-        const city = document.getElementById('backlog-city').value || '未分類';
-        const cat = document.querySelector('input[name="backlog-cat"]:checked')?.value || '食';
-        
+        const rawText = document.getElementById('backlog-batch-input')?.value.trim();
         if (!rawText) return uiManager.showToast('⚠️', '請注入燃料字串');
-        
         App.addBatchBacklogRecords(rawText, city, cat);
     } else {
-        // 🚀 執行單筆採集
-        const name = document.getElementById('backlog-name').value;
-        const city = document.getElementById('backlog-city').value;
-        const info = document.getElementById('backlog-info').value;
-        const cat = document.querySelector('input[name="backlog-cat"]:checked')?.value || '食';
-        
+        const name = document.getElementById('backlog-name')?.value.trim();
         if (!name) return uiManager.showToast('⚠️', '請輸入店名燃料');
-        
-        App.addBacklogRecord(name, city, info, cat);
+        // 🚀 修正4：新版沒有 info 欄位，傳空字串
+        App.addBacklogRecord(name, city, '', cat);
     }
-    
-    // 物理收尾
+
     App.modalRemove('add-backlog-modal');
 },
 

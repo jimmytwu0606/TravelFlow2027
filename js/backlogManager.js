@@ -759,11 +759,22 @@ async addBatchRecords(items) {
 // ========================
 
 
-/** 🚀 [AI-Recon-Engine] 偵蒐指令合成器 (V2026.ULTRA V2.2) */
 generateReconPrompt(params) {
     const { basePoint, style, mobility, duration } = params;
     const activeTrip = (window.state && window.state.trips) ? window.state.trips.find(t => t.id === window.state.activeTripId) : null;
     const city = activeTrip ? (activeTrip.city || "日本") : "日本";
+
+    // 🚀 [新增] 去重排除清單：讀取記憶體中現有靈感名稱
+    let exclusionBlock = '';
+    if (this.items && this.items.length > 0) {
+        const existingNames = this.items.map(it => it.name).filter(Boolean);
+        if (existingNames.length > 0) {
+            exclusionBlock = `
+⚠️ 排除協定（以下地點已存在於靈感區，嚴禁推薦）：
+${existingNames.map(n => `- ${n}`).join('\n')}
+`;
+        }
+    }
 
     return `【STRICT_RADAR_RECON / VERIFIED_ONLY】
 你是具備實境地理數據的旅遊專家。請針對「${city} ${basePoint}」周邊進行掃描。
@@ -773,11 +784,12 @@ generateReconPrompt(params) {
 - 移動方式：${mobility}
 - 預期時間：${duration}
 - 偏好風格：${style}
-
+${exclusionBlock}
 🎯 搜尋協定：
 1. 真實驗證：只提供 Google Maps 上可查到的實體業者，每筆必須附上 Google Maps 評分作為驗證依據。
 2. 品類精準：只提供符合「${style}」的業者，不符風格者（如甜點店/咖啡廳）排除。
 3. 距離計算：根據「${mobility}」與「${duration}」自動計算合理半徑（步行15分鐘≈1km；搭車10分鐘≈3-5km）。
+4. 去重檢查：排除協定中的地點一律禁止出現在結果中。
 
 🎯 輸出：搜尋周邊 3-5 個優質節點，以 JSON 陣列格式輸出，禁止前言。
 
@@ -800,6 +812,7 @@ generateReconPrompt(params) {
 - [hours] 為營業時間，無法確認填 ""。
 - 禁止 Markdown 之外的文字。`;
 },
+
 
 /** 📋 [AI-Recon-Copy] 執行指令封裝複製 (100% 避開正則語法風險版) */
 copyReconPrompt() {
@@ -844,14 +857,12 @@ copyReconPrompt() {
     }
 },
 
-/** 💾 [AI-Recon-Save] 注入 AI 偵蒐燃料 (數據自癒版) */
 async saveReconFuel() {
     const inputArea = document.getElementById('recon-json-input');
     if (!inputArea) return;
     
     const rawInput = inputArea.value.trim();
     try {
-        // 物理洗滌：洗掉 Markdown 的噪訊
         const sanitized = rawInput
             .replace(/```json/g, '')
             .replace(/```/g, '')
@@ -861,14 +872,39 @@ async saveReconFuel() {
         const items = JSON.parse(sanitized);
         if (!Array.isArray(items)) throw new Error("FORMAT_ERROR");
 
+        // 🚀 [新增] 二次去重保險：對比現有 items 名稱
+        const existingNames = new Set(
+            (this.items || []).map(it => it.name?.trim().toLowerCase())
+        );
+
+        const duplicates = [];
+        const toImport = items.filter(item => {
+            const key = item.name?.trim().toLowerCase();
+            if (existingNames.has(key)) {
+                duplicates.push(item.name);
+                return false;
+            }
+            return true;
+        });
+
+        // 🚀 [新增] 有重複時給使用者感知
+        if (duplicates.length > 0) {
+            console.log(`⚠️ [Recon-Dedup] 跳過重複: ${duplicates.join(', ')}`);
+            uiManager.showToast('ℹ️', `已跳過 ${duplicates.length} 筆重複：${duplicates.slice(0, 2).join('、')}${duplicates.length > 2 ? '...' : ''}`);
+        }
+
+        if (toImport.length === 0) {
+            uiManager.showToast('⚠️', '所有項目皆已存在於靈感區');
+            return;
+        }
+
         let count = 0;
-        for (const item of items) {
-            // 透過 addRecord 執行原子組裝
+        for (const item of toImport) {
             const id = await this.addRecord(item);
             if (id) count++;
         }
 
-        uiManager.showToast('🚀', `偵蒐完畢，注入 ${count} 筆靈感`);
+        uiManager.showToast('🚀', `偵蒐完畢，注入 ${count} 筆靈感${duplicates.length > 0 ? `（跳過 ${duplicates.length} 筆重複）` : ''}`);
         
         if (window.App && typeof window.App.modalRemove === 'function') {
             window.App.modalRemove('ai-recon-modal');
@@ -879,6 +915,7 @@ async saveReconFuel() {
         uiManager.showToast('❌', '燃料格式異常');
     }
 },
+
 
 // ========================
 //    靈感小卡匯出與匯入
@@ -940,7 +977,7 @@ async importBacklogFuel() {
 
 /** 🤖 [AI-Planner] 多日行程分配 Prompt 生成器 */
 _generateDayPlannerPrompt(trip, selectedCards, settings) {
-    const { depType, customDep, cardLimit, daysMode, pace } = settings;
+    const { depType, customDep, cardLimit, daysMode, pace, spreadMode } = settings;
 
     // 🚀 1. 建立每天對應飯店查詢表
     const hotelByDay = {};
@@ -975,7 +1012,6 @@ _generateDayPlannerPrompt(trip, selectedCards, settings) {
         const depPort = departureFlight.depPort || '機場';
         const carrier = departureFlight.carrier || '';
         const code = departureFlight.code || '';
-        // 計算需到機場時間（班機前3小時）
         const [h, m] = depTime.split(':').map(Number);
         const airportH = h - 3;
         const airportTime = `${String(airportH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -1030,10 +1066,29 @@ _generateDayPlannerPrompt(trip, selectedCards, settings) {
     };
     const paceInfo = paceMap[String(pace)] || paceMap['2'];
 
-    // 🚀 6. 小卡清單
-    const cardList = selectedCards.map(c =>
-        `- ID:${c.id} | 名稱:${c.name}${c.info ? ` (${c.info})` : ''} | 分類:${c.category} | 城市:${c.city}`
-    ).join('\n');
+// 🚀 6. 小卡清單（含去重防禦）
+    const seenNames = new Set();
+    const deduplicatedCards = selectedCards.filter(c => {
+        const key = c.name?.trim().toLowerCase();
+        if (!key || seenNames.has(key)) return false;
+        seenNames.add(key);
+        return true;
+    });
+
+    const skippedCount = selectedCards.length - deduplicatedCards.length;
+    if (skippedCount > 0) {
+        console.warn(`⚠️ [DayPlanner-Dedup] 偵測到 ${skippedCount} 筆重複小卡，已自動排除`);
+    }
+
+const cardList = deduplicatedCards.map(c => {
+    const isMust = settings.mustGoIds?.has(c.id);
+    return `- ID:${c.id} | 名稱:${c.name}${c.info ? ` (${c.info})` : ''} | 分類:${c.category} | 城市:${c.city}${isMust ? ' | ⭐ 必去（禁止列入 unscheduled）' : ''}`;
+}).join('\n');
+
+    // 🚀 7. 分類平衡指令（疊加，非互斥）
+    const spreadInstruction = spreadMode
+        ? `12. 【分類平衡】在地理動線允許的前提下，同一天的 [cards] 中相同分類不得超過 1 個（例如同天不得有 2 間咖啡廳、2 個神社、2 間餐廳）。請優先以地理位置分區決定哪些景點同天，再於同區內將同類景點拆分至不同天。若同區內同類景點實在無法拆分（如整趟行程都在右京區），則以時段錯開為優先，並在 [note] 說明原因。`
+        : '';
 
     return `【STRICT_JSON_ONLY】
 你是專業旅遊行程規劃師，請將以下景點卡片合理分配到行程，輸出純 JSON，禁止前言與結語。
@@ -1046,7 +1101,7 @@ ${arrivalNote}${departureNote}
 行程節奏：${paceInfo.label}（${paceInfo.desc}）
 每天上限：${cardLimit} 個景點
 
-【景點卡片清單（共 ${selectedCards.length} 筆）】
+【景點卡片清單（共 ${deduplicatedCards.length} 筆）】
 ${cardList}
 
 【規劃原則】
@@ -1060,7 +1115,8 @@ ${cardList}
 8. 節奏為${paceInfo.label}：${paceInfo.desc}。
 9. 餐食處理：禁止在 [cards] 陣列中加入非清單內的 ID，用餐時段建議請寫在 [note] 欄位。
 10. [theme] 必須使用繁體中文，10字以內。
-11. [cards] 每筆請附上建議訪問時間。
+11. [cards] 每筆請附上建議訪問時間。${spreadInstruction ? `\n${spreadInstruction}` : ''}
+12. 標記「⭐ 必去」的景點必須排入 [cards]，絕對禁止列入 unscheduled，即使需要調整其他景點的天數分配也必須優先保障。
 
 【輸出格式】
 {
@@ -1080,6 +1136,7 @@ ${cardList}
   ]
 }`;
 }
+
 };
 
 // 🚀 執行末端強制焊接 (確保 ESM 環境下 window 依然導通)

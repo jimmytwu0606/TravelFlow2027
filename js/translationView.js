@@ -10,6 +10,33 @@
 
 import { challengeEngine } from './challengeEngine.js';
 
+window.vocabCardToggle = function(bodyId, iconId) {
+    const body = document.getElementById(bodyId);
+    const icon = document.getElementById(iconId);
+    if (!body || !icon) return;
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+};
+
+window.grammarCardToggle = function(bodyId, iconId) {
+    const body = document.getElementById(bodyId);
+    const icon = document.getElementById(iconId);
+    if (!body || !icon) return;
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+};
+
+window.quizToggleAnalysis = function(quizId) {
+    const panel = document.getElementById(`analysis-${quizId}`);
+    const icon = document.getElementById(`analysis-icon-${quizId}`);
+    if (!panel || !icon) return;
+    const isOpen = panel.style.display !== 'none';
+    panel.style.display = isOpen ? 'none' : 'block';
+    icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+};
+
 export const translationView = {
 
     // ============================================================
@@ -720,30 +747,179 @@ _getCategoryStyle(category) {
     return staticMap[category] || { icon: '📄', color: 'bg-slate-50 text-slate-400 border-slate-100' };
 },
 
-/** 📖 [Module] 單字精煉卡片 - 主引擎 (視覺復位版) */
+/** 📖 [Module] 單字精煉卡片 - 主引擎 (C版收合架構) */
 _renderVocabCard(v, idx, itemId) {
     const d = this._prepareVocabData(v);
     if (!d.word) return '';
-
     const anchorId = `card-單字-${idx}-${itemId}`;
     const levelColor = this._getTierColor(d.level);
     const editPayload = v.data ? { data: v.data, level: d.level } : { ...v, level: d.level };
+    const bodyId = `vocab-body-${itemId}-${idx}`;
+    const iconId = `vocab-icon-${itemId}-${idx}`;
 
-    // 🚀 核心結構：維持相對定位容器，確保絕對定位的旗標與按鈕不偏移
     return `
-        <div id="${anchorId}" class="bg-white p-7 pt-12 pb-10 rounded-[2.8rem] border border-slate-100 shadow-sm mb-12 animate-fade-in relative transition-all duration-300 hover:shadow-md text-left">
-            
-            ${this._renderVocabTopBadges(d, levelColor)}
-            ${this._renderVocabActionButtons(d, itemId, idx)}
-            
-            <div id="display-content-${itemId}-${idx}" class="relative z-10">
-                ${this._renderVocabMainHeading(d)}
-                ${this._renderVocabDetailBox(d, itemId, idx)}
+        <div id="${anchorId}"
+             style="background:white; border-radius:1.4rem; border:0.5px solid #E2E8F0; overflow:hidden; margin-bottom:1.5rem; transition:box-shadow 0.2s;"
+             class="animate-fade-in text-left">
+
+            <!-- 頂部 N 級色條 -->
+            <div style="height:4px; width:100%; background:${levelColor};"></div>
+
+            <!-- Meta 列：徽章 + 動作按鈕 -->
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px 0;">
+
+                <!-- 左：JLPT + 詞性 + 語調型 -->
+                ${this._renderVocabTopBadges(d, levelColor)}
+
+                <!-- 右：發音 + 展開 -->
+                <div style="display:flex; gap:2px;">
+                    <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center; border:none; background:transparent; border-radius:8px; cursor:pointer; color:#993556; transition:background 0.15s;"
+                            onmouseover="this.style.background='#FBEAF0'" onmouseout="this.style.background='transparent'"
+                            onclick="event.stopPropagation(); translationEngine.speakSegment('${d.cleanW.replace(/'/g, "\\'")}')">
+                        <i class="fa-solid fa-volume-high" style="font-size:13px;"></i>
+                    </button>
+                    <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center; border:none; background:transparent; border-radius:8px; cursor:pointer; color:#888780; transition:background 0.15s;"
+                            onmouseover="this.style.background='#F1EFE8'" onmouseout="this.style.background='transparent'"
+                            onclick="event.stopPropagation(); vocabCardToggle('${bodyId}', '${iconId}')">
+                        <i id="${iconId}" class="fa-solid fa-chevron-down" style="font-size:12px; transition:transform 0.2s;"></i>
+                    </button>
+                </div>
             </div>
 
+            <!-- 主詞（ruby 標注） -->
+            <div style="padding:8px 14px 12px;">
+                ${this._renderVocabMainHeading(d)}
+            </div>
+
+            <!-- 展開區塊 -->
+            <div id="${bodyId}" style="display:none; border-top:0.5px solid #E2E8F0;">
+
+                <!-- 翻譯 + 例句 -->
+                ${this._renderVocabDetailBox(d, itemId, idx)}
+
+                <!-- 底部：編輯 + 刪除 -->
+                ${this._renderVocabActionButtons(d, itemId, idx)}
+
+            </div>
+
+            <!-- 編輯面板（展開後才可見） -->
             ${this._renderVocabEditPanel(itemId, idx, editPayload)}
         </div>`;
 },
+
+/** 🎨 [Private] 子組件：頂部標籤列（flexbox，非絕對定位） */
+_renderVocabTopBadges(d, levelColor) {
+    const accentLabel = (d.accent !== undefined && d.accent !== null && d.accent !== '')
+        ? `${d.accent} ${d.tone || '平板型'}`
+        : (d.tone || '');
+
+    return `
+        <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+
+            <!-- N 級 -->
+            <span style="display:inline-flex; align-items:center; font-size:11px; font-weight:700;
+                         padding:3px 10px; border-radius:20px; background:${levelColor}; color:white;
+                         letter-spacing:0.05em;">
+                ${d.level}
+            </span>
+
+            <!-- 詞性 -->
+            <button onclick="event.stopPropagation(); translationEngine.showPosGuide('${d.rawPOS}')"
+                    style="display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600;
+                           padding:3px 9px; border-radius:20px; background:#F1EFE8; color:#444441;
+                           border:0.5px solid #D3D1C7; cursor:pointer;">
+                ${d.pos}
+                <i class="fa-solid fa-circle-info" style="font-size:8px; color:#B4B2A9;"></i>
+            </button>
+
+            <!-- 語調型（有值才渲染） -->
+            ${accentLabel ? `
+            <button onclick="event.stopPropagation(); translationEngine.showAccentGuide()"
+                    style="display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600;
+                           padding:3px 9px; border-radius:20px; background:#FAEEDA; color:#633806;
+                           border:0.5px solid #FAC775; cursor:pointer;">
+                ${accentLabel}
+                <i class="fa-solid fa-circle-question" style="font-size:8px; color:#EF9F27;"></i>
+            </button>` : ''}
+
+        </div>`;
+},
+
+/** 🔘 [Private] 子組件：底部操作列（編輯 + 刪除） */
+_renderVocabActionButtons(d, itemId, idx) {
+    const confirmId = `vocab-bubble-${String(itemId).replace(/[^a-zA-Z0-9]/g, '')}-${idx}`;
+
+    return `
+        <div style="display:flex; align-items:center; justify-content:flex-end; gap:4px;
+                    padding:6px 10px 8px; border-top:0.5px solid #E2E8F0;">
+
+            <!-- 編輯 -->
+            <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+                           border:none; background:transparent; border-radius:8px; cursor:pointer;
+                           color:#888780; transition:background 0.15s;"
+                    onmouseover="this.style.background='#F1EFE8'; this.style.color='#378ADD'"
+                    onmouseout="this.style.background='transparent'; this.style.color='#888780'"
+                    onclick="event.stopPropagation(); translationEngine.toggleEditMode('${itemId}', ${idx})">
+                <i class="fa-solid fa-pen-to-square" style="font-size:11px;"></i>
+            </button>
+
+            <!-- 刪除（含確認氣泡） -->
+            <div style="position:relative; display:flex; align-items:center; justify-content:center;">
+                <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+                               border:none; background:transparent; border-radius:8px; cursor:pointer;
+                               color:#888780; transition:background 0.15s;"
+                        onmouseover="this.style.background='#FCEBEB'; this.style.color='#A32D2D'"
+                        onmouseout="this.style.background='transparent'; this.style.color='#888780'"
+                        onclick="event.stopPropagation(); this.nextElementSibling.innerHTML = translationView.renderMiniConfirm('${confirmId}', '永久移除此單字?', 'translationEngine.deleteEduItem(\\'${itemId}\\', \\'單字\\', ${idx})');">
+                    <i class="fa-solid fa-trash-can" style="font-size:11px;"></i>
+                </button>
+                <div style="position:absolute; bottom:100%; right:0; z-index:6000;"></div>
+            </div>
+
+        </div>`;
+},
+
+/** 📝 [Private] 子組件：內容盒（翻譯 + 例句） */
+_renderVocabDetailBox(d, itemId, idx) {
+    return `
+        <div style="padding:10px 14px 0;">
+
+            <!-- 翻譯 -->
+            <p style="font-size:14px; color:#3C3C3C; line-height:1.65; margin-bottom:10px;">
+                ${d.trans}
+            </p>
+
+            <div style="height:0.5px; background:#E2E8F0; margin-bottom:10px;"></div>
+
+            <!-- 例句 -->
+            <div style="display:flex; gap:10px; align-items:flex-start;
+                        background:#F8F4F1; border-radius:10px; padding:10px 12px; margin-bottom:10px;">
+
+                <!-- 播放鍵 -->
+                <button style="width:28px; height:28px; min-width:28px; border-radius:50%;
+                               background:#D4537E; display:flex; align-items:center; justify-content:center;
+                               border:none; cursor:pointer; margin-top:2px; transition:transform 0.15s;"
+                        onmouseover="this.style.transform='scale(1.08)'"
+                        onmouseout="this.style.transform='scale(1)'"
+                        onclick="event.stopPropagation(); translationEngine.speakSegment('${d.example ? d.example.replace(/'/g, "\\'") : ''}')">
+                    <i class="fa-solid fa-play" style="font-size:10px; color:white; margin-left:1px;"></i>
+                </button>
+
+                <!-- 例句文字 -->
+                <div style="flex:1; min-width:0;">
+                    <p style="font-size:13.5px; color:#2C2C2A; line-height:1.75; margin-bottom:3px; word-break:break-all;">
+                        ${this.highlightPoint ? this.highlightPoint(d.example || '', d.word) : (d.example || '')}
+                    </p>
+                    <p style="font-size:12px; color:#888780; line-height:1.5; font-style:italic;">
+                        ${d.exTrans || ''}
+                    </p>
+                </div>
+
+            </div>
+        </div>`;
+},
+
+
 
 /** 🧬 [Private] 子程序：數據預處理 (V2026.ULTRA 物件化對焦版) */
 _prepareVocabData(v) {
@@ -783,96 +959,98 @@ _prepareVocabData(v) {
     };
 },
 
-/** 🎨 [Private] 子組件：頂部標籤 (V2026.ULTRA.FINAL_SOLID 視覺復位版) */
-_renderVocabTopBadges(d, levelColor) {
-    // 🚀 核心 A：標籤去脂 - 將詞性與重音標籤從 py-1.5 降至 py-0.5
-    // 🚀 核心 B：陰影回歸 - 將 shadow-sm 換回 shadow-md/lg 強化懸浮層次感
-    return `
-        <div class="absolute -top-3.5 left-5 z-50 flex items-center gap-2.5">
-            <div class="relative group shadow-2xl">
-                <div style="background: ${levelColor};" class="px-6 py-2.5 rounded-2xl rounded-bl-none flex items-center justify-center min-w-[75px]">
-                    <span class="text-white text-[12px] font-black tracking-widest uppercase relative z-10">${d.level}</span>
-                </div>
-                <div style="background: ${levelColor}; filter: brightness(0.6);" class="w-3 h-3 absolute -bottom-3 left-0 [clip-path:polygon(0_0,100%_0,100%_100%)]"></div>
-            </div>
-
-            <button onclick="translationEngine.showPosGuide('${d.rawPOS}')" 
-                    class="relative px-5 py-1 bg-white/90 backdrop-blur-sm border border-slate-100 rounded-2xl shadow-md group active:scale-95 transition-all min-w-[70px]">
-                <span class="text-[11px] font-black text-slate-500 uppercase tracking-tighter block">${d.pos}</span>
-                <i class="fa-solid fa-circle-info text-[8px] text-slate-300 absolute bottom-1.5 right-1.5 opacity-60"></i>
-            </button>
-
-            <button onclick="translationEngine.showAccentGuide()" 
-                    class="relative px-5 py-1 bg-white/90 backdrop-blur-sm border border-slate-100 rounded-2xl shadow-md group active:scale-95 transition-all min-w-[90px]">
-                <span class="text-[11px] font-black theme-text-pink uppercase tracking-tighter block">${d.accent || '0'} ${d.tone || '平板型'}</span>
-                <i class="fa-solid fa-circle-question text-[9px] text-pink-100 absolute bottom-1.5 right-1.5 group-hover:theme-text-pink"></i>
-            </button>
-        </div>`;
-},
 
 
-/** 🔘 [Private] 子組件：右上角操作按鈕 (V2026.ULTRA 深度避讓版) */
-_renderVocabActionButtons(d, itemId, idx) {
-    // 🚀 核心 A：定義氣泡唯一物理座標
-    const confirmId = `vocab-bubble-${String(itemId).replace(/[^a-zA-Z0-9]/g, '')}-${idx}`;
-
-    // 🚀 修正：物理位移下調至 top-20，預留一個完整字級的呼吸空間
-    return `
-        <div class="absolute top-20 right-4 z-[5000]">
-            <div class="px-2 py-1 rounded-2xl bg-white/90 border border-slate-100 shadow-md backdrop-blur-md flex gap-1 relative transition-all">
-                
-                <button class="w-8 h-8 rounded-xl text-slate-300 hover:text-blue-400 hover:bg-slate-50 flex items-center justify-center transition-all active:scale-90"
-                        onclick="event.stopPropagation(); translationEngine.toggleEditMode('${itemId}', ${idx})">
-                    <i class="fa-solid fa-pen-to-square text-[10px]"></i>
-                </button>
-
-                <div class="relative flex items-center justify-center">
-                    <button class="w-8 h-8 rounded-xl text-slate-300 hover:text-red-400 hover:bg-slate-50 flex items-center justify-center transition-all active:scale-90"
-                            onclick="event.stopPropagation(); this.nextElementSibling.innerHTML = translationView.renderMiniConfirm('${confirmId}', '永久移除此單字?', 'translationEngine.deleteEduItem(\\'${itemId}\\', \\'單字\\', ${idx})');">
-                        <i class="fa-solid fa-trash-can text-[10px]"></i>
-                    </button>
-                    <div class="absolute bottom-full right-0 z-[6000]"></div>
-                </div>
-
-                <button class="w-8 h-8 rounded-xl text-slate-400 hover:theme-text-pink hover:bg-slate-50 flex items-center justify-center active:scale-90 transition-all"
-                        onclick="event.stopPropagation(); translationEngine.speakSegment('${d.cleanW.replace(/'/g, "\\'")}')">
-                    <i class="fa-solid fa-volume-high text-[11px]"></i>
-                </button>
-            </div>
-        </div>`;
-},
-
-/** 🔤 [Private] 子組件：標題本文 (封殺重疊風險) */
+/** 🔤 [Private] 子組件：標題本文 */
 _renderVocabMainHeading(d) {
-    // 🚀 修正：增加 pr-24 確保長單字不會撞到操作按鈕，mt-14 為頂部旗標留出足夠呼吸感
-    const headingHtml = d.isRedundant 
-        ? d.word 
-        : `<ruby>${d.word}<rt class="text-[14px] font-bold text-pink-400 mb-1">${d.reading}</rt></ruby>`;
-    
-    return `<h4 class="text-3.5xl font-black text-slate-800 leading-none tracking-tight pr-24 mb-10 mt-14">${headingHtml}</h4>`;
+    // 全平假名：直接顯示，不套 ruby
+    if (d.isRedundant) {
+        return `<h4 class="vocab-main-heading">${d.word}</h4>`;
+    }
+
+    // 漢字拆分：將 word 與 reading 對齊，逐字產生 ruby
+    const rubyHtml = this._buildRubyHtml(d.word, d.reading);
+    return `<h4 class="vocab-main-heading">${rubyHtml}</h4>`;
 },
 
+/**
+ * 🔧 [Private] 將 word 字串與 reading 字串對齊，產生逐字 ruby HTML
+ * 策略：
+ *   1. 掃描 word 中每個字元
+ *   2. 平假名／片假名字元：直接輸出，同時從 reading 消耗對應字元
+ *   3. 漢字字元：累積成一個漢字塊，直到遇到假名或結尾
+ *   4. 漢字塊對應的讀音從 reading 中按假名字元數切出
+ *   例：word='利用する' reading='りょうする'
+ *       → '利'→'り'、'用'→'よう'、'する'→'する'（假名不標）
+ */
+_buildRubyHtml(word, reading) {
+    // 判斷字元類型
+    const isKanji   = c => /[\u4E00-\u9FFF\u3400-\u4DBF]/.test(c);
+    const isKana    = c => /[\u3040-\u30FF]/.test(c);  // 平假名 + 片假名
 
-/** 📝 [Private] 子組件：內容盒 (校準內距與呼吸感) */
-_renderVocabDetailBox(d, itemId, idx) {
-    return `
-        <div class="bg-pink-50/40 rounded-[2.5rem] p-7 border border-pink-100/30 transition-all">
-            <p class="text-[15px] font-bold text-slate-600 leading-relaxed mb-8 pr-2">${d.trans}</p>
-            <div class="w-full h-[1px] bg-white/60 mb-8"></div>
-            <div class="flex gap-4 items-start">
-                <button onclick="event.stopPropagation(); translationEngine.speakSegment('${d.example ? d.example.replace(/'/g, "\\'") : ''}')" 
-                        class="shrink-0 w-11 h-11 rounded-full bg-white border border-pink-100 flex items-center justify-center shadow-sm active:scale-90 transition-all">
-                    <i class="fa-solid fa-play text-pink-400 text-[12px] ml-0.5"></i>
-                </button>
-                <div class="flex flex-col gap-2 pt-0.5 text-left overflow-hidden">
-                    <p class="text-[1.12rem] text-slate-800 font-medium leading-snug tracking-tight truncate-multiline">
-                        ${this.highlightPoint ? this.highlightPoint(d.example || '', d.word) : (d.example || '')}
-                    </p>
-                    <p class="text-[13px] text-slate-400 font-bold leading-tight italic opacity-90">${d.exTrans || ''}</p>
-                </div>
-            </div>
-        </div>`;
+    // 把 word 切成 token 陣列：{ type: 'kanji'|'kana', text }
+    const tokens = [];
+    let buf = '';
+    let bufType = null;
+
+    for (const ch of word) {
+        const type = isKanji(ch) ? 'kanji' : 'kana';
+        if (type !== bufType) {
+            if (buf) tokens.push({ type: bufType, text: buf });
+            buf = ch;
+            bufType = type;
+        } else {
+            buf += ch;
+        }
+    }
+    if (buf) tokens.push({ type: bufType, text: buf });
+
+    // 從 reading 逐步切出對應讀音
+    // 策略：遇到 kana token，直接從 reading 消耗等長字元（兩者應一致）
+    //       遇到 kanji token，消耗 reading 直到下一個 kana token 的起點
+    let readingCursor = 0;
+    const result = [];
+
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+
+        if (token.type === 'kana') {
+            // 平假名直接輸出，不標 rt，同時推進 reading 指標
+            result.push(token.text);
+            readingCursor += token.text.length;
+
+        } else {
+            // 漢字塊：需要找出對應的讀音範圍
+            // 找下一個 kana token 在 reading 中的位置
+            let rtText = '';
+
+            if (i + 1 < tokens.length && tokens[i + 1].type === 'kana') {
+                // 下一段是假名：從 reading 尾部找這段假名，切出漢字讀音
+                const nextKana = tokens[i + 1].text;
+                const nextKanaPos = reading.indexOf(nextKana, readingCursor);
+                if (nextKanaPos !== -1) {
+                    rtText = reading.slice(readingCursor, nextKanaPos);
+                    readingCursor = nextKanaPos;
+                } else {
+                    // fallback：剩餘 reading 全給這個漢字塊
+                    rtText = reading.slice(readingCursor);
+                    readingCursor = reading.length;
+                }
+            } else {
+                // 最後一段或下一段也是漢字：剩餘 reading 全給這個漢字塊
+                rtText = reading.slice(readingCursor);
+                readingCursor = reading.length;
+            }
+
+            // 每個漢字字元單獨包一個 ruby（讀音按比例拆）
+            // 若讀音無法精確對應每個漢字，整塊包一個 ruby 即可
+            result.push(`<ruby>${token.text}<rt>${rtText}</rt></ruby>`);
+        }
+    }
+
+    return result.join('');
 },
+
 
 /** ✍️ [Private] 子組件：編輯面板 (風格一致化) */
 _renderVocabEditPanel(itemId, idx, editPayload) {
@@ -888,83 +1066,131 @@ _renderVocabEditPanel(itemId, idx, editPayload) {
 },
 
 
-/** ⚖️ [Module] 文法精煉卡片：主引擎 (V2026.ULTRA 編輯導通修正版) */
+/** ⚖️ [Module] 文法精煉卡片：主引擎 (C版收合架構) */
 _renderGrammarCard(g, idx, itemId) {
     const anchorId = `card-文法-${idx}-${itemId}`;
     const level = g.level || 'N?';
     const activeColor = this._getTierColor(level);
-    
-    // 🚀 數據加工：確保編輯燃料完整
-    const editPayload = { 
-        point: g.point, 
-        level: g.level, 
-        meaning: g.meaning, 
-        jp: g.jp, 
-        cn: g.cn 
+    const bodyId = `gram-body-${itemId}-${idx}`;
+    const iconId = `gram-icon-${itemId}-${idx}`;
+    const editPayload = {
+        point: g.point,
+        level: g.level,
+        meaning: g.meaning,
+        jp: g.jp,
+        cn: g.cn
     };
 
     return `
-        <div id="${anchorId}" class="bg-white p-7 pt-12 pb-10 rounded-[2.8rem] border border-slate-100 shadow-sm mb-12 animate-fade-in relative transition-all duration-300 hover:shadow-md text-left">
-            
-            ${this._renderGrammarTopSection(level, activeColor, itemId, idx, g)}
-            
-            <div id="display-content-${itemId}-${idx}" class="relative z-10 animate-fade-in">
-                <h4 class="text-3.5xl font-black text-slate-800 leading-none tracking-tight pr-24 mb-10 mt-14">
-                    ${g.point}
-                </h4>
-                ${this._renderGrammarDetailBody(g)}
+        <div id="${anchorId}"
+             style="background:white; border-radius:1.4rem; border:0.5px solid #E2E8F0; overflow:hidden; margin-bottom:1.5rem; transition:box-shadow 0.2s;"
+             class="animate-fade-in text-left">
+
+            <!-- 頂部 N 級色條 -->
+            <div style="height:4px; width:100%; background:${activeColor};"></div>
+
+            <!-- Meta 列：徽章 + 動作按鈕 -->
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px 0;">
+
+                <!-- 左：N 級 + 文法辨析標籤 -->
+                ${this._renderGrammarTopBadges(level, activeColor)}
+
+                <!-- 右：發音 + 展開 -->
+                <div style="display:flex; gap:2px;">
+                    <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center; border:none; background:transparent; border-radius:8px; cursor:pointer; color:#993556; transition:background 0.15s;"
+                            onmouseover="this.style.background='#FBEAF0'" onmouseout="this.style.background='transparent'"
+                            onclick="event.stopPropagation(); translationEngine.speakSegment('${String(g.jp_pure || g.jp || '').replace(/'/g, "\\'").replace(/\n/g, ' ')}')">
+                        <i class="fa-solid fa-volume-high" style="font-size:13px;"></i>
+                    </button>
+                    <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center; border:none; background:transparent; border-radius:8px; cursor:pointer; color:#888780; transition:background 0.15s;"
+                            onmouseover="this.style.background='#F1EFE8'" onmouseout="this.style.background='transparent'"
+                            onclick="event.stopPropagation(); window.grammarCardToggle('${bodyId}', '${iconId}')">
+                        <i id="${iconId}" class="fa-solid fa-chevron-down" style="font-size:12px; transition:transform 0.2s;"></i>
+                    </button>
+                </div>
             </div>
 
+            <!-- 文法點主標題 -->
+            <div style="padding:8px 14px 12px;">
+                <h4 style="font-size:22px; font-weight:700; color:#1a1a1a; line-height:1.4; margin:0; letter-spacing:-0.01em;">
+                    ${g.point || ''}
+                </h4>
+            </div>
+
+            <!-- 展開區塊 -->
+            <div id="${bodyId}" style="display:none; border-top:0.5px solid #E2E8F0;">
+
+                <!-- 詳解主體 -->
+                ${this._renderGrammarDetailBody(g)}
+
+                <!-- 底部：編輯 + 刪除 -->
+                ${this._renderGrammarActionButtons(itemId, idx)}
+
+            </div>
+
+            <!-- 編輯面板 -->
             ${this._renderGrammarEditPanel(itemId, idx, editPayload)}
-            
+
         </div>`;
 },
 
-/** 🧬 [Sub-Module] 1. 文法卡片頂部區域 (V2026.ULTRA 避讓與陰影復位版) */
-_renderGrammarTopSection(level, activeColor, itemId, idx, g) {
-    const safeItemId = String(itemId).replace(/[^a-zA-Z0-9]/g, '');
-    const confirmId = `gram-bubble-${safeItemId}-${idx}`;
-    const speechFuel = String(g.jp_pure || g.jp || '').replace(/'/g, "\\'").replace(/\n/g, ' ');
+/** 🎨 [Private] 文法頂部徽章列（flexbox，非絕對定位） */
+_renderGrammarTopBadges(level, activeColor) {
+    return `
+        <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+
+            <!-- N 級 -->
+            <span style="display:inline-flex; align-items:center; font-size:11px; font-weight:700;
+                         padding:3px 10px; border-radius:20px; background:${activeColor}; color:white;
+                         letter-spacing:0.05em;">
+                ${level}
+            </span>
+
+            <!-- 文法辨析標籤 -->
+            <span style="display:inline-flex; align-items:center; font-size:11px; font-weight:600;
+                         padding:3px 9px; border-radius:20px; background:#F1EFE8; color:#444441;
+                         border:0.5px solid #D3D1C7;">
+                文法辨析
+            </span>
+
+        </div>`;
+},
+
+/** 🔘 [Private] 文法底部操作列（編輯 + 刪除） */
+_renderGrammarActionButtons(itemId, idx) {
+    const confirmId = `gram-bubble-${String(itemId).replace(/[^a-zA-Z0-9]/g, '')}-${idx}`;
 
     return `
-        <div class="absolute -top-3.5 left-4 z-50 flex items-center gap-2.5">
-            <div class="relative group shadow-2xl">
-                <div style="background: ${activeColor};" class="px-6 py-2.5 rounded-2xl rounded-bl-none shadow-lg flex items-center justify-center min-w-[75px]">
-                    <span class="text-white text-[12px] font-black tracking-widest uppercase relative z-10">${level}</span>
-                </div>
-                <div style="background: ${activeColor}; filter: brightness(0.6);" class="w-3 h-3 absolute -bottom-3 left-0 [clip-path:polygon(0_0,100%_0,100%_100%)]"></div>
-            </div>
-            
-            <div class="relative px-5 py-1 bg-white border border-slate-100 rounded-2xl shadow-md">
-                <span class="text-[11px] font-black text-slate-500 uppercase tracking-wider block">文法辨析</span>
-            </div>
-        </div>
+        <div style="display:flex; align-items:center; justify-content:flex-end; gap:4px;
+                    padding:6px 10px 8px; border-top:0.5px solid #E2E8F0;">
 
-        <div class="absolute top-20 right-4 z-[5000]">
-            <div class="px-2 py-1 rounded-2xl bg-white/90 border border-slate-100 shadow-md backdrop-blur-md flex gap-1 relative transition-all">
-                
-                <button onclick="event.stopPropagation(); translationEngine.toggleEditMode('${itemId}', ${idx})"
-                        class="w-8 h-8 rounded-xl text-slate-300 hover:text-blue-400 hover:bg-slate-50 flex items-center justify-center transition-all active:scale-90">
-                    <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+            <!-- 編輯 -->
+            <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+                           border:none; background:transparent; border-radius:8px; cursor:pointer;
+                           color:#888780; transition:background 0.15s;"
+                    onmouseover="this.style.background='#F1EFE8'; this.style.color='#378ADD'"
+                    onmouseout="this.style.background='transparent'; this.style.color='#888780'"
+                    onclick="event.stopPropagation(); translationEngine.toggleEditMode('${itemId}', ${idx})">
+                <i class="fa-solid fa-pen-to-square" style="font-size:11px;"></i>
+            </button>
+
+            <!-- 刪除（含確認氣泡） -->
+            <div style="position:relative; display:flex; align-items:center; justify-content:center;">
+                <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+                               border:none; background:transparent; border-radius:8px; cursor:pointer;
+                               color:#888780; transition:background 0.15s;"
+                        onmouseover="this.style.background='#FCEBEB'; this.style.color='#A32D2D'"
+                        onmouseout="this.style.background='transparent'; this.style.color='#888780'"
+                        onclick="event.stopPropagation(); this.nextElementSibling.innerHTML = translationView.renderMiniConfirm('${confirmId}', '抹除文法存檔?', 'translationEngine.deleteEduItem(\\'${itemId}\\', \\'文法\\', ${idx})');">
+                    <i class="fa-solid fa-trash-can" style="font-size:11px;"></i>
                 </button>
-
-                <div class="relative flex items-center justify-center">
-                    <button onclick="event.stopPropagation(); this.nextElementSibling.innerHTML = translationView.renderMiniConfirm('${confirmId}', '抹除文法存檔?', 'translationEngine.deleteEduItem(\\'${itemId}\\', \\'文法\\', ${idx})');"
-                            class="w-8 h-8 rounded-xl text-slate-300 hover:text-red-400 hover:bg-slate-50 flex items-center justify-center transition-all active:scale-90">
-                        <i class="fa-solid fa-trash-can text-[10px]"></i>
-                    </button>
-                    <div class="absolute bottom-full right-0 z-[6000]"></div>
-                </div>
-
-                <button onclick="event.stopPropagation(); translationEngine.speakSegment('${speechFuel}')"
-                        class="w-8 h-8 rounded-xl text-slate-400 hover:theme-text-pink hover:bg-slate-50 flex items-center justify-center active:scale-90 transition-all">
-                    <i class="fa-solid fa-volume-high text-[11px]"></i>
-                </button>
+                <div style="position:absolute; bottom:100%; right:0; z-index:6000;"></div>
             </div>
+
         </div>`;
 },
 
-/** 🧬 [Sub-Module] 2. 文法詳解主體 (內容呈現) */
+/** 🧬 [Sub-Module] 文法詳解主體（內容不變，只修外層圓角） */
 _renderGrammarDetailBody(g) {
     const point = g.point || '';
     const cleanPoint = point.replace(/[~～]/g, '').trim();
@@ -974,26 +1200,26 @@ _renderGrammarDetailBody(g) {
     );
 
     return `
-        <div class="bg-pink-50/40 rounded-[2.5rem] p-8 border border-pink-100/30">
-            <p class="text-[15px] font-bold text-slate-600 leading-relaxed mb-10 pr-4">${meaning}</p>
-            <div class="w-full h-[1px] bg-white/60 mb-8"></div>
-            <div class="flex gap-5 items-start">
-                <div class="flex flex-col gap-2.5 pt-0.5 text-left">
-                    <p class="text-[1.15rem] text-slate-800 font-medium leading-snug tracking-tight">
-                        ${this.highlightPoint ? this.highlightPoint(g.jp || '', point) : (g.jp || '')}
-                    </p>
-                    <p class="text-[13.5px] text-slate-400 font-bold leading-tight italic opacity-90">
-                        ${g.cn || '暫無翻譯'}
-                    </p>
-                </div>
+        <div style="background:#FDF5F8; border-radius:10px; padding:14px; margin:10px 10px 0;">
+            <p style="font-size:14px; font-weight:600; color:#3C3C3C; line-height:1.7; margin-bottom:10px;">
+                ${meaning}
+            </p>
+            <div style="height:0.5px; background:#E2E8F0; margin-bottom:10px;"></div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+                <p style="font-size:13.5px; color:#2C2C2A; line-height:1.75; margin:0;">
+                    ${this.highlightPoint ? this.highlightPoint(g.jp || '', point) : (g.jp || '')}
+                </p>
+                <p style="font-size:12px; color:#888780; line-height:1.5; font-style:italic; margin:0;">
+                    ${g.cn || '暫無翻譯'}
+                </p>
             </div>
         </div>`;
 },
 
-/** 🧬 [Sub-Module] 3. 文法專屬編輯面板 (與 saveEduEdit 協定對接) */
+/** 🧬 [Sub-Module] 文法編輯面板（不變） */
 _renderGrammarEditPanel(itemId, idx, editPayload) {
     return `
-        <div id="edit-panel-${itemId}-${idx}" class="hidden mt-6 p-4 bg-slate-50 rounded-[2.5rem] border border-slate-200 animate-slide-up">
+        <div id="edit-panel-${itemId}-${idx}" class="hidden mt-4 p-4 bg-slate-50 rounded-[2.5rem] border border-slate-200 animate-slide-up">
             <textarea id="edit-input-${itemId}-${idx}" 
                       class="w-full bg-white border-none rounded-[1.8rem] p-5 text-[12px] text-slate-600 min-h-[180px] font-mono focus:ring-2 ring-pink-100 shadow-inner">${JSON.stringify(editPayload, null, 2)}</textarea>
             <div class="flex justify-end gap-3 mt-4 pr-2">
@@ -1006,7 +1232,6 @@ _renderGrammarEditPanel(itemId, idx, editPayload) {
             </div>
         </div>`;
 },
-
 
 /** 🎨 [Helper] 文法點高亮對焦器 (V2026.ULTRA.VISUAL_ENGINE) */
 highlightPoint: function(text, target) {
@@ -1025,144 +1250,80 @@ highlightPoint: function(text, target) {
     return text.replace(regex, `<span class="theme-text-pink font-black">$1</span>`);
 },
 
-/** ❓ 核心入口：測驗清單渲染器 (V2026.ULTRA.STACK_ENGINE) */
-renderQuizList(quizArray, itemId) {
-    if (!quizArray || !Array.isArray(quizArray)) return '';
-    
-    // 💡 職人診斷：在此處封裝 stack 容器，並將數據流向單一卡片渲染器
-    return `
-        <div class="quiz-stack space-y-10 animate-fade-in">
-            ${quizArray.map((q, idx) => this._renderQuizCard(q, idx, itemId)).join('')}
-        </div>
-    `;
-},
-
-/** ❓ 核心入口：模擬測驗卡片 (V2026.ULTRA.FINAL 避讓與解耦版) */
+/** ❓ 核心入口：模擬測驗卡片 (C版架構) */
 _renderQuizCard(q, idx, itemId) {
     const safeItemId = String(itemId || 'def').replace(/[^a-zA-Z0-9]/g, '');
     const quizId = `quiz-node-${safeItemId}-${idx}`;
     const level = q.level || 'N?';
     const levelColor = this._getTierColor(level);
+    const editPayload = {
+        question: q.question || q.題目,
+        options: q.options,
+        answer: q.answer,
+        analysis: q.analysis,
+        level: q.level
+    };
 
     return `
-        <div id="${quizId}" class="bg-white p-7 pt-14 pb-10 rounded-[2.8rem] border border-slate-100 shadow-sm mb-12 animate-fade-in relative transition-all duration-300 hover:shadow-md text-left">
-            
-            ${this._renderQuizTopSection(level, levelColor, idx, safeItemId)}
-            ${this._renderQuizActionButtons(itemId, idx, safeItemId)}
-            
-            <div id="display-content-${itemId}-${idx}" class="animate-fade-in relative z-10">
+        <div id="${quizId}"
+             style="background:white; border-radius:1.4rem; border:0.5px solid #E2E8F0; overflow:hidden; margin-bottom:1.5rem; transition:box-shadow 0.2s;"
+             class="animate-fade-in text-left">
+
+            <!-- 頂部色條 -->
+            <div style="height:4px; width:100%; background:${levelColor};"></div>
+
+            <!-- Meta 列：徽章左、操作按鈕右 -->
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px 0;">
+
+                <!-- 左：N 級 + 測驗編號 -->
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <span style="display:inline-flex; align-items:center; font-size:11px; font-weight:700;
+                                 padding:3px 10px; border-radius:20px; background:${levelColor}; color:white;
+                                 letter-spacing:0.05em;">
+                        ${level}
+                    </span>
+                    <span style="display:inline-flex; align-items:center; font-size:11px; font-weight:600;
+                                 padding:3px 9px; border-radius:20px; background:#1e293b; color:white;
+                                 border:0.5px solid #334155;">
+                        模擬測驗 ${idx + 1}
+                    </span>
+                </div>
+
+                <!-- 右：編輯 + 刪除（水平排列） -->
+                ${this._renderQuizActionButtons(itemId, idx, safeItemId)}
+
+            </div>
+
+            <!-- 題目 -->
+            <div style="padding:10px 14px 12px;">
                 ${this._renderQuizQuestionBody(q.question || q.題目 || '')}
+            </div>
+
+            <!-- 選項 -->
+            <div style="padding:0 10px 10px;">
                 ${this._renderQuizOptions(q, quizId)}
-                ${this._renderQuizAnalysis(quizId, q.analysis || q.詳解 || '數據路網暫無詳解')}
             </div>
 
+            <!-- 詳解 -->
+            ${this._renderQuizAnalysis(quizId, q.analysis || q.詳解 || '數據路網暫無詳解')}
+
+            <!-- 編輯面板 -->
             ${this._renderQuizEditPanel(itemId, idx, q)}
+
         </div>`;
 },
 
-/** 🧬 [Sub-Module] 1. 測驗卡頂部區域 (執行壓扁與陰影復位) */
-_renderQuizTopSection(level, levelColor, idx, safeItemId) {
-    return `
-        <div class="absolute -top-3.5 left-5 z-50 flex items-center gap-2.5">
-            <div class="relative group shadow-2xl">
-                <div style="background: ${levelColor};" class="px-6 py-2.5 rounded-2xl rounded-bl-none flex items-center justify-center min-w-[75px]">
-                    <span class="text-white text-[12px] font-black tracking-[0.15em] uppercase relative z-10">${level}</span>
-                </div>
-                <div style="background: ${levelColor}; filter: brightness(0.7);" class="w-3 h-3 absolute -bottom-3 left-0 [clip-path:polygon(0_0,100%_0,100%_100%)]"></div>
-            </div>
-            <div class="relative px-6 py-1 bg-slate-800 border border-slate-700 rounded-2xl shadow-md min-w-[100px] flex items-center justify-center">
-                <span class="text-[11px] font-black text-white uppercase tracking-wider block">模擬測驗 ${idx + 1}</span>
-            </div>
-        </div>`;
-},
-
-/** 🔘 [Sub-Module] 2. 測驗功能按鈕 (V2026.ULTRA 垂直並列對焦版) */
-_renderQuizActionButtons(itemId, idx, safeItemId) {
-    const confirmId = `quiz-bubble-${safeItemId}-${idx}`;
-    
-    // 🚀 核心修正 A：移回 -top-3.5 與標籤並列
-    // 🚀 核心修正 B：flex-col 強制垂直排列，節省橫向空間
-    return `
-        <div class="absolute -top-3.5 right-4 z-[5000]">
-            <div class="p-1 rounded-2xl bg-white/90 border border-slate-100 shadow-md backdrop-blur-md flex flex-col gap-1 relative">
-                
-                <button class="w-8 h-8 rounded-xl text-slate-300 hover:text-blue-400 hover:bg-slate-50 flex items-center justify-center transition-all active:scale-90"
-                        title="編輯測驗"
-                        onclick="event.stopPropagation(); translationEngine.toggleEditMode('${itemId}', ${idx})">
-                    <i class="fa-solid fa-pen-to-square text-[10px]"></i>
-                </button>
-
-                <div class="relative flex items-center justify-center">
-                    <button class="w-8 h-8 rounded-xl text-slate-300 hover:text-red-400 hover:bg-slate-50 flex items-center justify-center transition-all active:scale-90"
-                            title="刪除燃料"
-                            onclick="event.stopPropagation(); this.nextElementSibling.innerHTML = translationView.renderMiniConfirm('${confirmId}', '抹除測驗燃料?', 'translationEngine.deleteEduItem(\\'${itemId}\\', \\'測驗\\', ${idx})');">
-                        <i class="fa-solid fa-trash-can text-[10px]"></i>
-                    </button>
-                    <div class="absolute bottom-full right-0 z-[6000]"></div>
-                </div>
-            </div>
-        </div>`;
-},
-
-/** 📝 [Sub-Module] 3. 題目主體渲染 */
-_renderQuizQuestionBody(text) {
-    return `
-        <div class="mb-12 mt-10 px-2">
-            <p class="text-[1.2rem] font-medium text-slate-800 leading-[2] tracking-tight">
-                ${text.replace(/____+|＿+|＿+/, '<span class="inline-block w-24 border-b-2 border-pink-400 mx-2 align-bottom"></span>')}
-            </p>
-        </div>`;
-},
-
-/** 🔘 [Sub-Module] 4. 選項列表渲染 (轉義對焦) */
-_renderQuizOptions(q, quizId) {
-    const options = q.options || ['A', 'B', 'C', 'D'];
-    const answer = q.answer || q.正確答案 || '';
-    return `
-        <div class="grid grid-cols-1 gap-4 mb-10">
-            ${options.map((opt, i) => {
-                const safeOpt = String(opt || '').replace(/'/g, "\\'").replace(/"/g, "&quot;");
-                const safeAnswer = String(answer || '').replace(/'/g, "\\'").replace(/"/g, "&quot;");
-                const charLabel = String.fromCharCode(65 + i);
-                return `
-                    <button onclick="window.translationView._handleQuizClick(this, '${safeOpt}', '${safeAnswer}', '${quizId}')" 
-                            class="quiz-opt group w-full p-5 rounded-[2rem] bg-slate-50 border border-slate-100 flex items-center gap-5 transition-all hover:bg-white hover:shadow-md active:scale-[0.98] text-left"
-                            data-val="${safeOpt}">
-                        <div class="opt-indicator w-10 h-10 shrink-0 rounded-full bg-white border border-slate-100 flex items-center justify-center shadow-sm transition-colors">
-                            <span class="opt-label text-slate-400 font-black text-[15px] group-hover:text-pink-500">${charLabel}</span>
-                        </div>
-                        <span class="text-[1.05rem] font-medium text-slate-700">${opt}</span>
-                    </button>`;
-            }).join('')}
-        </div>`;
-},
-
-/** 💡 [Sub-Module] 5. 解析面板渲染 */
-_renderQuizAnalysis(quizId, analysis) {
-    return `
-        <div class="pt-8 border-t border-slate-50 text-center">
-            <button onclick="const panel = document.getElementById('analysis-${quizId}'); panel.classList.toggle('hidden'); this.querySelector('i').classList.toggle('rotate-180')" 
-                    class="inline-flex items-center gap-3 group px-10 py-2">
-                <span class="text-[11px] font-black text-slate-400 tracking-[0.4em] uppercase group-hover:text-pink-500 transition-colors">查看詳解</span>
-                <i class="fa-solid fa-chevron-down text-[10px] text-slate-300 group-hover:text-pink-400 transition-transform duration-300"></i>
-            </button>
-            <div id="analysis-${quizId}" class="hidden mt-8 animate-slide-up text-left">
-                <div class="bg-pink-50/30 rounded-[3rem] px-6 py-10 border border-pink-100/20 transition-all">
-                    <div class="flex items-center gap-3 mb-8">
-                        <div class="w-1.5 h-1.5 rounded-full theme-bg"></div>
-                        <span class="text-[12px] font-black theme-text-pink tracking-widest uppercase">測驗詳解</span>
-                    </div>
-                    <p class="text-[15px] font-normal text-slate-600 leading-[2.1] text-justify tracking-wide">${analysis}</p>
-                </div>
-            </div>
-        </div>`;
-},
-
-/** ✍️ [Sub-Module] 6. 編輯面板渲染 */
+/** ✍️ [Sub-Module] 測驗編輯面板 */
 _renderQuizEditPanel(itemId, idx, q) {
-    const editPayload = { question: q.question || q.題目, options: q.options, answer: q.answer, analysis: q.analysis, level: q.level };
+    const editPayload = {
+        question: q.question || q.題目,
+        options: q.options,
+        answer: q.answer,
+        analysis: q.analysis,
+        level: q.level
+    };
     return `
-        <div id="edit-panel-${itemId}-${idx}" class="hidden mt-6 p-4 bg-slate-50 rounded-[2.5rem] border border-slate-200 animate-slide-up">
+        <div id="edit-panel-${itemId}-${idx}" class="hidden mt-4 p-4 bg-slate-50 rounded-[2.5rem] border border-slate-200 animate-slide-up">
             <textarea id="edit-input-${itemId}-${idx}" 
                       class="w-full bg-white border-none rounded-[1.8rem] p-5 text-[12px] text-slate-600 min-h-[220px] font-mono focus:ring-2 ring-pink-100 shadow-inner">${JSON.stringify(editPayload, null, 2)}</textarea>
             <div class="flex justify-end gap-3 mt-4 pr-2">
@@ -1176,123 +1337,303 @@ _renderQuizEditPanel(itemId, idx, q) {
         </div>`;
 },
 
+/** 🔘 [Sub-Module] 右上角操作列（水平排列，無底部列） */
+_renderQuizActionButtons(itemId, idx, safeItemId) {
+    const confirmId = `quiz-bubble-${safeItemId}-${idx}`;
+    return `
+        <div style="display:flex; align-items:center; gap:2px;">
 
-/** 🧠 處理答題回饋 (V2026.ULTRA.FINAL 邏輯導通加固版) */
+            <!-- 編輯 -->
+            <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+                           border:none; background:transparent; border-radius:8px; cursor:pointer;
+                           color:#888780; transition:background 0.15s;"
+                    onmouseover="this.style.background='#F1EFE8'; this.style.color='#378ADD'"
+                    onmouseout="this.style.background='transparent'; this.style.color='#888780'"
+                    onclick="event.stopPropagation(); translationEngine.toggleEditMode('${itemId}', ${idx})">
+                <i class="fa-solid fa-pen-to-square" style="font-size:11px;"></i>
+            </button>
+
+            <!-- 刪除（含確認氣泡） -->
+            <div style="position:relative; display:flex; align-items:center; justify-content:center;">
+                <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+                               border:none; background:transparent; border-radius:8px; cursor:pointer;
+                               color:#888780; transition:background 0.15s;"
+                        onmouseover="this.style.background='#FCEBEB'; this.style.color='#A32D2D'"
+                        onmouseout="this.style.background='transparent'; this.style.color='#888780'"
+                        onclick="event.stopPropagation(); this.nextElementSibling.innerHTML = translationView.renderMiniConfirm('${confirmId}', '抹除測驗燃料?', 'translationEngine.deleteEduItem(\\'${itemId}\\', \\'測驗\\', ${idx})');">
+                    <i class="fa-solid fa-trash-can" style="font-size:11px;"></i>
+                </button>
+                <div style="position:absolute; bottom:100%; right:0; z-index:6000;"></div>
+            </div>
+
+        </div>`;
+},
+
+/** 📝 [Sub-Module] 題目主體 */
+_renderQuizQuestionBody(text) {
+    return `
+        <p style="font-size:15px; font-weight:500; color:#1a1a1a; line-height:1.9; margin:0;">
+            ${text.replace(/____+|＿+/, '<span style="display:inline-block; width:72px; border-bottom:2px solid #D4537E; margin:0 4px; vertical-align:bottom;"></span>')}
+        </p>`;
+},
+
+/** 🔘 [Sub-Module] 選項列表 */
+_renderQuizOptions(q, quizId) {
+    const options = q.options || [];
+    const answer = q.answer || q.正確答案 || '';
+    return `
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            ${options.map((opt, i) => {
+                const safeOpt = String(opt || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const safeAnswer = String(answer || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const charLabel = String.fromCharCode(65 + i);
+                return `
+                    <button onclick="window.translationView._handleQuizClick(this, '${safeOpt}', '${safeAnswer}', '${quizId}')"
+                            style="display:flex; align-items:center; gap:12px; width:100%;
+                                   padding:12px 14px; border-radius:10px;
+                                   background:#F8F6F3; border:0.5px solid #E2E8F0;
+                                   cursor:pointer; text-align:left; transition:all 0.15s;"
+                            onmouseover="this.style.background='white'; this.style.borderColor='#F4C0D1'; this.style.boxShadow='0 2px 8px rgba(212,83,126,0.08)'"
+                            onmouseout="this.style.background='#F8F6F3'; this.style.borderColor='#E2E8F0'; this.style.boxShadow='none'"
+                            class="quiz-opt"
+                            data-val="${safeOpt}">
+                        <div class="opt-indicator"
+                             style="width:32px; height:32px; min-width:32px; border-radius:50%;
+                                    background:white; border:0.5px solid #E2E8F0;
+                                    display:flex; align-items:center; justify-content:center;
+                                    transition:all 0.15s;">
+                            <span class="opt-label"
+                                  style="font-size:13px; font-weight:700; color:#888780;">
+                                ${charLabel}
+                            </span>
+                        </div>
+                        <span style="font-size:14px; font-weight:500; color:#2C2C2A; line-height:1.5;">
+                            ${opt}
+                        </span>
+                    </button>`;
+            }).join('')}
+        </div>`;
+},
+
+/** 💡 [Sub-Module] 詳解面板（保留按鈕，答題後由 JS 控制展開狀態） */
+_renderQuizAnalysis(quizId, analysis) {
+    return `
+        <div style="padding:8px 10px 0;">
+
+            <!-- 查看詳解按鈕 -->
+            <button id="analysis-btn-${quizId}"
+                    onclick="window.quizToggleAnalysis('${quizId}')"
+                    style="display:flex; align-items:center; gap:6px; width:100%;
+                           padding:8px 12px; border-radius:8px; border:none;
+                           background:transparent; cursor:pointer; color:#888780;
+                           font-size:11px; font-weight:700; letter-spacing:0.08em;
+                           text-transform:uppercase; transition:background 0.15s;"
+                    onmouseover="this.style.background='#F8F6F3'"
+                    onmouseout="this.style.background='transparent'">
+                <i id="analysis-icon-${quizId}"
+                   class="fa-solid fa-chevron-down"
+                   style="font-size:10px; transition:transform 0.2s;"></i>
+                查看詳解
+            </button>
+
+            <!-- 詳解內容（預設隱藏，答題後由 _handleQuizClick 控制） -->
+            <div id="analysis-${quizId}"
+                 style="display:none; margin:4px 0 10px;
+                        background:#FDF5F8; border-radius:10px;
+                        padding:12px 14px; border:0.5px solid #F4C0D1;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+                    <div style="width:5px; height:5px; border-radius:50%; background:#D4537E;"></div>
+                    <span style="font-size:11px; font-weight:700; color:#993556;
+                                 letter-spacing:0.08em; text-transform:uppercase;">測驗詳解</span>
+                </div>
+                <p style="font-size:13.5px; color:#3C3C3C; line-height:1.9; margin:0;">
+                    ${analysis}
+                </p>
+            </div>
+        </div>`;
+},
+
+/** 🧠 處理答題回饋 */
 _handleQuizClick(btn, selected, correct, quizId) {
-    // 🚀 1. 物理定位與導通預檢
-    const container = document.getElementById(quizId) || btn.closest('.bg-white');
-    if (!container) return console.error("❌ [Quiz-Logic-Collapse] 無法對焦答題容器");
+    const container = document.getElementById(quizId);
+    if (!container) return;
 
-    // 💡 職人診斷：執行全量洗滌，封殺隱形空格與型別偏移
-    const cleanSelected = String(selected || "").trim();
-    const cleanCorrect = String(correct || "").trim();
+    const cleanSelected = String(selected || '').trim();
+    const cleanCorrect = String(correct || '').trim();
     const isCorrect = (cleanSelected === cleanCorrect);
-    
-    // 🚀 2. 磁區重置 (全量掃描並封殺 Null 報錯)
+
+    // 封鎖重複點擊 + 重置所有選項樣式
     const options = container.querySelectorAll('.quiz-opt');
     options.forEach(opt => {
-        opt.classList.remove('border-pink-200', 'border-slate-800', 'bg-white', 'shadow-md', 'opacity-50');
-        const indicator = opt.querySelector('.opt-indicator');
-        const label = opt.querySelector('.opt-label');
-        if (indicator) indicator.classList.remove('theme-bg', 'bg-slate-800', 'bg-green-500');
-        if (label) label.classList.remove('text-white', 'text-pink-500');
-        // 封殺重複點擊
         opt.style.pointerEvents = 'none';
+        opt.style.background = '#F8F6F3';
+        opt.style.borderColor = '#E2E8F0';
+        opt.style.boxShadow = 'none';
+        const ind = opt.querySelector('.opt-indicator');
+        const lbl = opt.querySelector('.opt-label');
+        if (ind) { ind.style.background = 'white'; ind.style.borderColor = '#E2E8F0'; }
+        if (lbl) lbl.style.color = '#888780';
     });
 
-    // 🚀 3. 注入交互反饋零件
-    const targetIndicator = btn.querySelector('.opt-indicator');
-    const targetLabel = btn.querySelector('.opt-label');
+    const targetInd = btn.querySelector('.opt-indicator');
+    const targetLbl = btn.querySelector('.opt-label');
 
     if (isCorrect) {
-        // 🎯 正確路徑：點亮職人粉
-        btn.classList.add('border-pink-200', 'bg-white', 'shadow-md');
-        if (targetIndicator) targetIndicator.classList.add('theme-bg');
-        if (targetLabel) targetLabel.classList.add('text-white');
+        btn.style.background = 'white';
+        btn.style.borderColor = '#F4C0D1';
+        btn.style.boxShadow = '0 2px 8px rgba(212,83,126,0.12)';
+        if (targetInd) { targetInd.style.background = '#D4537E'; targetInd.style.borderColor = '#D4537E'; }
+        if (targetLbl) targetLbl.style.color = 'white';
         uiManager.showToast('✨', '答對了！職人級的表現');
     } else {
-        // 🎯 錯誤路徑：沉浸式深灰反饋
-        btn.classList.add('border-slate-800', 'bg-white');
-        if (targetIndicator) targetIndicator.classList.add('bg-slate-800');
-        if (targetLabel) targetLabel.classList.add('text-white');
-        
-        // 💡 職人補償：主動點亮「正確選項」以消除資訊不對稱
+        btn.style.background = 'white';
+        btn.style.borderColor = '#334155';
+        if (targetInd) { targetInd.style.background = '#1e293b'; targetInd.style.borderColor = '#1e293b'; }
+        if (targetLbl) targetLbl.style.color = 'white';
+
+        // 點亮正確選項
         options.forEach(opt => {
-            const optText = String(opt.dataset.val || opt.innerText).trim();
-            if (optText === cleanCorrect) {
-                opt.classList.add('border-green-200', 'ring-2', 'ring-green-100');
-                const ind = opt.querySelector('.opt-indicator');
-                if (ind) ind.classList.add('bg-green-500');
-            } else {
-                opt.classList.add('opacity-50'); // 弱化非正確選項
+            const val = String(opt.dataset.val || '').trim();
+            const ind = opt.querySelector('.opt-indicator');
+            const lbl = opt.querySelector('.opt-label');
+            if (val === cleanCorrect) {
+                opt.style.borderColor = '#86efac';
+                opt.style.boxShadow = '0 0 0 2px #dcfce7';
+                if (ind) { ind.style.background = '#22c55e'; ind.style.borderColor = '#22c55e'; }
+                if (lbl) lbl.style.color = 'white';
+            } else if (opt !== btn) {
+                opt.style.opacity = '0.45';
             }
         });
         uiManager.showToast('💡', '選錯了，看看解析對位吧');
     }
-    
-    // 🚀 4. 解析面板自動導通
-    const analysisPanel = document.getElementById(`analysis-${quizId}`) || 
-                          container.querySelector('[id^="analysis-"]');
-    if (analysisPanel) {
-        analysisPanel.classList.remove('hidden');
-        analysisPanel.classList.add('animate-slide-up'); // 注入流暢動畫
-        // 視覺對焦補償
-        setTimeout(() => {
-            analysisPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 100);
+
+    // 詳解面板：答對收合、答錯展開
+    const analysisPanel = document.getElementById(`analysis-${quizId}`);
+    const analysisIcon = document.getElementById(`analysis-icon-${quizId}`);
+    if (analysisPanel && analysisIcon) {
+        if (isCorrect) {
+            analysisPanel.style.display = 'none';
+            analysisIcon.style.transform = 'rotate(0deg)';
+        } else {
+            analysisPanel.style.display = 'block';
+            analysisIcon.style.transform = 'rotate(180deg)';
+            setTimeout(() => {
+                analysisPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 150);
+        }
     }
 },
 
 
-/** 🎧 子組件：聽力實戰練習卡片 (V2026.ULTRA 真值全導通版) */
+/** 🎧 子組件：聽力實戰練習卡片 (C版收合架構) */
 _renderListeningCard(l, idx, itemId) {
     if (!l) return '';
 
-    // 🚀 1. 物理座標純化
     const safeItemId = String(itemId || 'vault').replace(/[^a-zA-Z0-9]/g, '');
     const listenId = `listen-node-${safeItemId}-${idx}`;
-    
-    // 🚀 2. 數據深層洗滌 (封殺斜線與無效 Fallback)
     const pacingText = l.pacing || l.題目 || '聽力題目載入中...';
-    const variation = (l.variation || l.原文 || '無文本資料').replace(/\//g, '').trim(); 
+    const variation = (l.variation || l.原文 || '無文本資料').replace(/\//g, '').trim();
     const advice = l.advice || l.詳解 || '保持語感，穩定聽取';
     const answer = l.answer || l.正確答案 || 'A';
     const level = l.level || 'N?';
-    
-    // 🚀 3. 選項數據直連 (物理對位)
-    // 💡 職人診斷：精確對位 options 或 中文「選項」Key，若皆無則回傳空陣列進入 View 熔斷保護
-    const finalOptions = Array.isArray(l.options) ? l.options : 
+    const levelColor = this._getTierColor(level);
+    const finalOptions = Array.isArray(l.options) ? l.options :
                          (Array.isArray(l.選項) ? l.選項 : []);
-
-    // 🚀 4. 聲學燃料序列化 (安全傳參版)
-    // 💡 職人對位：使用 Object 封裝 rawAudio 並執行轉義，封殺單引號造成的 HTML 斷路
-    const rawAudio = l.audioText || l.音軌文本 || "";
-    const safeAudioPayload = String(rawAudio).replace(/'/g, "\\'").replace(/"/g, '&quot;');
-
-    // 🚀 5. 封裝編輯實體數據
-    const editPayload = { 
-        pacing: pacingText, 
-        audioText: rawAudio, 
-        options: finalOptions, 
-        answer, 
-        variation, 
-        advice, 
-        level 
-    };
+    const rawAudio = l.audioText || l.音軌文本 || '';
+    const safeQ = encodeURIComponent(typeof rawAudio === 'string' ? rawAudio : JSON.stringify(rawAudio));
+    const confirmId = `bubble-${String(itemId).replace(/[^a-zA-Z0-9]/g, '')}-${idx}`;
+    const editPayload = { pacing: pacingText, audioText: rawAudio, options: finalOptions, answer, variation, advice, level };
 
     return `
-        <div id="${listenId}" class="bg-white p-7 pt-14 pb-10 rounded-[2.8rem] border border-slate-100 shadow-sm mb-12 animate-fade-in relative transition-all duration-300 hover:shadow-md text-left">
-            
-            ${this._renderListeningHeader(level, idx, itemId, safeAudioPayload, rawAudio)}
-            
-            <div id="display-content-${itemId}-${idx}" class="animate-fade-in relative z-10">
-                ${this._renderListeningQuiz(pacingText, finalOptions, answer, listenId)}
-                ${this._renderListeningAnalysis(listenId, variation, advice)}
+        <div id="${listenId}"
+             style="background:white; border-radius:1.4rem; border:0.5px solid #E2E8F0; overflow:hidden; margin-bottom:1.5rem; transition:box-shadow 0.2s;"
+             class="animate-fade-in text-left">
+
+            <!-- 頂部色條 -->
+            <div style="height:4px; width:100%; background:${levelColor};"></div>
+
+            <!-- Meta 列：徽章左、操作按鈕右 -->
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px 0;">
+
+                <!-- 左：N 級 + 聽力模擬編號 -->
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <span style="display:inline-flex; align-items:center; font-size:11px; font-weight:700;
+                                 padding:3px 10px; border-radius:20px; background:${levelColor}; color:white;
+                                 letter-spacing:0.05em;">
+                        ${level}
+                    </span>
+                    <span style="display:inline-flex; align-items:center; font-size:11px; font-weight:600;
+                                 padding:3px 9px; border-radius:20px; background:#1e293b; color:white;
+                                 border:0.5px solid #334155;">
+                        聽力模擬 ${idx + 1}
+                    </span>
+                </div>
+
+                <!-- 右：編輯 + 刪除（水平排列） -->
+                <div style="display:flex; align-items:center; gap:2px;">
+
+                    <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+                                   border:none; background:transparent; border-radius:8px; cursor:pointer;
+                                   color:#888780; transition:background 0.15s;"
+                            onmouseover="this.style.background='#F1EFE8'; this.style.color='#378ADD'"
+                            onmouseout="this.style.background='transparent'; this.style.color='#888780'"
+                            onclick="event.stopPropagation(); translationEngine.toggleEditMode('${itemId}', ${idx})">
+                        <i class="fa-solid fa-pen-to-square" style="font-size:11px;"></i>
+                    </button>
+
+                    <div style="position:relative; display:flex; align-items:center; justify-content:center;">
+                        <button style="width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+                                       border:none; background:transparent; border-radius:8px; cursor:pointer;
+                                       color:#888780; transition:background 0.15s;"
+                                onmouseover="this.style.background='#FCEBEB'; this.style.color='#A32D2D'"
+                                onmouseout="this.style.background='transparent'; this.style.color='#888780'"
+                                onclick="event.stopPropagation(); this.nextElementSibling.innerHTML = translationView.renderMiniConfirm('${confirmId}', '回收聽力燃料?', 'translationEngine.deleteEduItem(\\'${itemId}\\', \\'聽力\\', ${idx})');">
+                            <i class="fa-solid fa-trash-can" style="font-size:11px;"></i>
+                        </button>
+                        <div style="position:absolute; bottom:100%; right:0; z-index:6000;"></div>
+                    </div>
+
+                </div>
             </div>
 
+            <!-- 題目文字 -->
+            <div style="padding:10px 14px 4px;">
+                <p style="font-size:15px; font-weight:500; color:#1a1a1a; line-height:1.9; margin:0;">
+                    ${pacingText}
+                </p>
+            </div>
+
+            <!-- 播放鍵（獨立一列，視覺核心） -->
+            <div style="display:flex; justify-content:center; padding:10px 14px 12px;">
+                <button onclick="event.stopPropagation(); App.speak(decodeURIComponent('${safeQ}'))"
+                        style="display:flex; align-items:center; gap:8px;
+                               padding:10px 24px; border-radius:999px;
+                               background:#D4537E; border:none; cursor:pointer;
+                               color:white; font-size:12px; font-weight:700;
+                               letter-spacing:0.05em; transition:all 0.15s;
+                               box-shadow:0 4px 12px rgba(212,83,126,0.25);"
+                        onmouseover="this.style.transform='scale(1.04)'; this.style.boxShadow='0 6px 16px rgba(212,83,126,0.35)'"
+                        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(212,83,126,0.25)'">
+                    <i class="fa-solid fa-volume-high" style="font-size:14px;"></i>
+                    播放音軌
+                </button>
+            </div>
+
+            <!-- 選項 -->
+            <div style="padding:0 10px 10px;">
+                ${this._renderListeningQuiz('', finalOptions, answer, listenId)}
+            </div>
+
+            <!-- 詳解（答錯自動展開，答對收合） -->
+            ${this._renderListeningAnalysisWrapper(listenId, variation, advice)}
+
+            <!-- 編輯面板 -->
             ${this._renderListeningEditPanel(itemId, idx, editPayload)}
+
         </div>`;
 },
+
 
 /** 🏷️ 子組件：聽力卡片頭部 (V2026.ULTRA 極限邊界對焦版) */
 _renderListeningHeader(level, idx, itemId, audioPayload, rawAudio) {
@@ -1346,136 +1687,282 @@ _renderListeningHeader(level, idx, itemId, audioPayload, rawAudio) {
 },
 
 
-/** 🎙️ 子組件：聽力考題區域 (V2026.ULTRA 物理顯現加固版) */
+/** 🎙️ 子組件：聽力選項區（移除題目渲染，只負責選項） */
 _renderListeningQuiz(pacingText, options, answer, listenId) {
-    // 🚀 1. 數據強制迭代化
-    // 💡 職人診斷：確保 options 必為陣列，封殺非陣列類型傳入導致的 map 崩潰
     const quizOptions = (options && Array.isArray(options)) ? options : [];
-    
-    // 🚀 2. 安全座標轉義
-    // 💡 職人對位：將單引號轉為雙重轉義，封殺 onclick 傳參造成的導通斷路
     const safeAnswer = String(answer || 'A').replace(/'/g, "\\'");
     const safeListenId = String(listenId).replace(/'/g, "\\'");
 
     return `
-        <div class="mb-12 mt-10 px-2">
-            <p class="text-[1.2rem] font-medium text-slate-800 leading-[1.8] tracking-tight">
-                ${pacingText}
-            </p>
-        </div>
-        
-        <div class="grid grid-cols-1 gap-4 mb-10 min-h-[50px] relative z-10">
+        <div style="display:flex; flex-direction:column; gap:8px;">
             ${quizOptions.length > 0 ? quizOptions.map((opt, i) => {
                 const charLabel = String.fromCharCode(65 + i);
                 const safeOpt = String(opt || '').replace(/"/g, '&quot;').replace(/'/g, "&#39;");
-                
                 return `
-                    <button onclick="window.translationView._handleQuizClick(this, '${charLabel}', '${safeAnswer}', '${safeListenId}')" 
-                            class="quiz-opt group w-full p-6 rounded-[2.5rem] bg-slate-50 border border-slate-100 flex items-center gap-5 transition-all hover:bg-white hover:shadow-md active:scale-[0.98] text-left">
-                        <div class="opt-indicator w-10 h-10 shrink-0 rounded-full bg-white border border-slate-100 flex items-center justify-center shadow-sm transition-colors text-slate-400 font-black text-[15px] group-hover:text-pink-500">
-                            ${charLabel}
+                    <button onclick="window.translationView._handleQuizClick(this, '${charLabel}', '${safeAnswer}', '${safeListenId}')"
+                            style="display:flex; align-items:center; gap:12px; width:100%;
+                                   padding:12px 14px; border-radius:10px;
+                                   background:#F8F6F3; border:0.5px solid #E2E8F0;
+                                   cursor:pointer; text-align:left; transition:all 0.15s;"
+                            onmouseover="this.style.background='white'; this.style.borderColor='#F4C0D1'; this.style.boxShadow='0 2px 8px rgba(212,83,126,0.08)'"
+                            onmouseout="this.style.background='#F8F6F3'; this.style.borderColor='#E2E8F0'; this.style.boxShadow='none'"
+                            class="quiz-opt"
+                            data-val="${charLabel}">
+                        <div class="opt-indicator"
+                             style="width:32px; height:32px; min-width:32px; border-radius:50%;
+                                    background:white; border:0.5px solid #E2E8F0;
+                                    display:flex; align-items:center; justify-content:center;
+                                    transition:all 0.15s;">
+                            <span class="opt-label"
+                                  style="font-size:13px; font-weight:700; color:#888780;">
+                                ${charLabel}
+                            </span>
                         </div>
-                        <div class="flex-1">
-                            <span class="text-[1.05rem] font-medium text-slate-700 block leading-relaxed">${safeOpt}</span>
-                        </div>
-                    </button>
-                `;
+                        <span style="font-size:14px; font-weight:500; color:#2C2C2A; line-height:1.5;">
+                            ${opt}
+                        </span>
+                    </button>`;
             }).join('') : `
-                <div class="p-10 text-center bg-rose-50 rounded-[2.5rem] border border-rose-100 border-dashed animate-pulse">
-                    <p class="text-rose-400 font-black text-[12px] uppercase tracking-widest">❌ 燃料斷路：Options 數據未對焦</p>
-                    <p class="text-rose-300 text-[10px] mt-1 font-bold italic">請檢查 JSON 內是否包含正確的 options 欄位</p>
-                </div>
-            `}
-        </div>
-    `;
+                <div style="padding:16px; text-align:center; background:#FFF5F5;
+                            border-radius:10px; border:0.5px dashed #FCA5A5;">
+                    <p style="font-size:12px; font-weight:700; color:#F87171;">
+                        ❌ 燃料斷路：Options 數據未對焦
+                    </p>
+                </div>`}
+        </div>`;
 },
 
+/** 💡 子組件：詳解面板外殼（答錯自動展開，答對收合） */
+_renderListeningAnalysisWrapper(listenId, variation, advice) {
+    return `
+        <div style="padding:8px 10px 0; border-top:0.5px solid #E2E8F0; margin-top:4px;">
 
-/** 💡 子組件：詳解面板 (V2026.ULTRA 語義自動對位版) */
-_renderListeningAnalysis(listenId, variation, advice) {
-    // 🚀 1. 物理提取函數：將對話字串轉化為 Map {角色+索引: 內容}
-    const parseDialogue = (text, isJP = true) => {
-        const regex = isJP ? /(男：|女：)/g : /(男：|女：)/g;
-        const parts = text.replace(/\//g, '').split(regex).filter(p => p.trim());
+            <!-- 對話精解按鈕 -->
+            <button id="analysis-btn-${listenId}"
+                    onclick="window.quizToggleAnalysis('${listenId}')"
+                    style="display:flex; align-items:center; gap:6px; width:100%;
+                           padding:8px 12px; border-radius:8px; border:none;
+                           background:transparent; cursor:pointer; color:#888780;
+                           font-size:11px; font-weight:700; letter-spacing:0.08em;
+                           text-transform:uppercase; transition:background 0.15s;"
+                    onmouseover="this.style.background='#F8F6F3'"
+                    onmouseout="this.style.background='transparent'">
+                <i id="analysis-icon-${listenId}"
+                   class="fa-solid fa-chevron-down"
+                   style="font-size:10px; transition:transform 0.2s;"></i>
+                對話精解
+            </button>
+
+            <!-- 詳解內容 -->
+            <div id="analysis-${listenId}" style="display:none; margin:4px 0 10px;">
+                ${this._renderListeningAnalysisContent(listenId, variation, advice)}
+            </div>
+
+        </div>`;
+},
+
+/** 💡 子組件：詳解內容 */
+_renderListeningAnalysisContent(listenId, variation, advice) {
+    const parseDialogue = (text) => {
+        const parts = text.replace(/\//g, '').split(/(男：|女：)/g).filter(p => p.trim());
         const result = [];
         for (let i = 0; i < parts.length; i += 2) {
-            result.push({ role: parts[i], content: parts[i+1]?.trim() || "" });
+            result.push({ role: parts[i], content: parts[i + 1]?.trim() || '' });
         }
         return result;
     };
 
-    // 🚀 2. 數據解構：分離原文與翻譯區塊
-    const jpDialogue = parseDialogue(variation, true);
-    
-    // 從 advice 提取【翻譯】區塊內容
+    const jpDialogue = parseDialogue(variation);
     const translationSection = advice.match(/【翻譯】([\s\S]*?)(?=【|$)/);
-    const zhContent = translationSection ? translationSection[1].trim() : "";
-    const zhDialogue = parseDialogue(zhContent, false);
+    const zhContent = translationSection ? translationSection[1].trim() : '';
+    const zhDialogue = parseDialogue(zhContent);
 
-    // 🚀 3. 執行物理對位焊接 (Alignment Mapping)
-    const alignedHtml = jpDialogue.map((jp, idx) => {
-        const zh = zhDialogue[idx] || { content: "---" };
-        const roleColor = jp.role.includes('女') ? 'theme-text-pink' : 'text-blue-500';
-        
-        return `
-            <div class="dialogue-pair mb-8 animate-fade-in group">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="px-2 py-0.5 rounded-lg bg-slate-100 ${roleColor} text-[10px] font-black tracking-tighter">
-                        ${jp.role.replace('：', '')}
-                    </span>
-                    <div class="h-[1px] flex-1 bg-slate-50 group-hover:bg-pink-50 transition-colors"></div>
-                </div>
-                
-                <div class="pl-2 space-y-2 border-l-2 border-transparent group-hover:border-pink-100 transition-all">
-                    <p class="text-[1.1rem] font-medium text-slate-800 leading-relaxed">
-                        ${jp.content}
-                    </p>
-                    <p class="text-[14px] font-bold text-slate-400 leading-relaxed italic">
-                        ${zh.content}
-                    </p>
-                </div>
+    const alignedHtml = jpDialogue.map((jp, i) => {
+    const zh = zhDialogue[i] || { content: '---' };
+    const isFemale = jp.role.includes('女');
+    const roleColor = isFemale ? '#D4537E' : '#185FA5';
+    const roleBg = isFemale ? '#FBEAF0' : '#E6F1FB';
+
+    // 保留「男：」/「女：」前綴，讓 _getAcousticIdentity 能正確識別性別
+    const safeContent = (jp.role + jp.content).replace(/'/g, "\\'").replace(/\n/g, ' ');
+
+    return `
+        <div style="margin-bottom:16px;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:5px;">
+                <span style="font-size:10px; font-weight:700;
+                             padding:2px 8px; border-radius:6px;
+                             background:${roleBg}; color:${roleColor};">
+                    ${jp.role.replace('：', '')}
+                </span>
+                <div style="height:0.5px; flex:1; background:#E2E8F0;"></div>
             </div>
-        `;
-    }).join('');
+            <div style="padding-left:10px; border-left:2px solid #E2E8F0;
+                        transition:border-color 0.2s;"
+                 onmouseover="this.style.borderColor='${roleColor}40'"
+                 onmouseout="this.style.borderColor='#E2E8F0'">
+                <p style="font-size:14px; font-weight:500; color:#1a1a1a;
+                           line-height:1.75; margin:0 0 4px;">
+                    ${jp.content}
+                </p>
+                <p style="font-size:12px; color:#888780; line-height:1.5;
+                           font-style:italic; margin:0 0 8px;">
+                    ${zh.content}
+                </p>
+                <button onclick="event.stopPropagation(); audioManager.speak('${safeContent}', window.currentActorA, window.currentActorB)"
+                        style="display:inline-flex; align-items:center; gap:4px;
+                               padding:3px 9px; border-radius:6px; border:none;
+                               background:${roleBg}; color:${roleColor};
+                               font-size:11px; font-weight:700; cursor:pointer;
+                               transition:opacity 0.15s;"
+                        onmouseover="this.style.opacity='0.75'"
+                        onmouseout="this.style.opacity='1'">
+                    <i class="fa-solid fa-volume-high" style="font-size:10px;"></i>
+                    朗讀
+                </button>
+            </div>
+        </div>`;
+}).join('');
 
-    // 🚀 4. 提取其餘解析區塊 (排除翻譯)
     const otherAdvice = advice
         .split(/(?=【.*?】)/)
         .filter(sec => !sec.includes('翻譯'))
         .map(sec => {
             const trimmed = sec.trim();
-            if (!trimmed) return "";
+            if (!trimmed) return '';
             return `
-                <div class="mt-8 pt-6 border-t border-slate-50">
-                    <p class="text-[11px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2 mb-3">
-                        <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                        ${trimmed.match(/【.*?】/)?.[0] || ""}
-                    </p>
-                    <div class="text-[14px] leading-[1.8] text-slate-500 px-1">
+                <div style="margin-top:12px; padding-top:12px; border-top:0.5px solid #E2E8F0;">
+                    <div style="display:flex; align-items:center; gap:5px; margin-bottom:6px;">
+                        <span style="width:5px; height:5px; border-radius:50%;
+                                     background:#EF9F27; flex-shrink:0;"></span>
+                        <p style="font-size:11px; font-weight:700; color:#BA7517;
+                                   letter-spacing:0.08em; text-transform:uppercase; margin:0;">
+                            ${trimmed.match(/【.*?】/)?.[0] || ''}
+                        </p>
+                    </div>
+                    <div style="font-size:13px; color:#5F5E5A; line-height:1.8; padding-left:2px;">
                         ${trimmed.replace(/【.*?】/, '').replace(/\n/g, '<br>')}
                     </div>
                 </div>`;
         }).join('');
 
     return `
-        <div class="pt-8 border-t border-slate-50 text-center">
-            <button onclick="const panel = document.getElementById('analysis-${listenId}'); panel.classList.toggle('hidden'); this.querySelector('i').classList.toggle('rotate-180')" 
-                    class="inline-flex items-center gap-3 group px-10 py-2">
-                <span class="text-[11px] font-black text-slate-400 tracking-[0.4em] uppercase group-hover:text-pink-500 transition-colors">對話精解</span>
-                <i class="fa-solid fa-chevron-down text-[10px] text-slate-300 group-hover:text-pink-400 transition-transform duration-300"></i>
-            </button>
-            
-            <div id="analysis-${listenId}" class="hidden mt-8 animate-slide-up text-left px-2">
-                <div class="bg-white rounded-[3rem] px-8 py-10 border border-slate-100 shadow-xl space-y-2">
-                    
-                    <div class="space-y-2">
-                        <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-8 text-center">Linguistic Alignment</p>
-                        ${alignedHtml}
-                    </div>
+        <div style="background:#FDF5F8; border-radius:10px; padding:14px;
+                    border:0.5px solid #F4C0D1;">
+            <p style="font-size:10px; font-weight:700; color:#B4B2A9;
+                       text-align:center; letter-spacing:0.2em; text-transform:uppercase;
+                       margin:0 0 14px;">
+                Linguistic Alignment
+            </p>
+            ${alignedHtml}
+            ${otherAdvice}
+        </div>`;
+},
 
-                    ${otherAdvice}
 
+/** 💡 子組件：詳解面板 */
+_renderListeningAnalysis(listenId, variation, advice) {
+    const parseDialogue = (text) => {
+        const parts = text.replace(/\//g, '').split(/(男：|女：)/g).filter(p => p.trim());
+        const result = [];
+        for (let i = 0; i < parts.length; i += 2) {
+            result.push({ role: parts[i], content: parts[i + 1]?.trim() || '' });
+        }
+        return result;
+    };
+
+    const jpDialogue = parseDialogue(variation);
+    const translationSection = advice.match(/【翻譯】([\s\S]*?)(?=【|$)/);
+    const zhContent = translationSection ? translationSection[1].trim() : '';
+    const zhDialogue = parseDialogue(zhContent);
+
+    const alignedHtml = jpDialogue.map((jp, i) => {
+        const zh = zhDialogue[i] || { content: '---' };
+        const isFemale = jp.role.includes('女');
+        const roleColor = isFemale ? '#D4537E' : '#185FA5';
+        const roleBg = isFemale ? '#FBEAF0' : '#E6F1FB';
+
+        return `
+            <div style="margin-bottom:16px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                    <span style="font-size:10px; font-weight:700;
+                                 padding:2px 8px; border-radius:6px;
+                                 background:${roleBg}; color:${roleColor};">
+                        ${jp.role.replace('：', '')}
+                    </span>
+                    <div style="height:0.5px; flex:1; background:#E2E8F0;"></div>
                 </div>
+                <div style="padding-left:10px; border-left:2px solid #E2E8F0;
+                            transition:border-color 0.2s;"
+                     onmouseover="this.style.borderColor='${roleColor}40'"
+                     onmouseout="this.style.borderColor='#E2E8F0'">
+                    <p style="font-size:14px; font-weight:500; color:#1a1a1a;
+                               line-height:1.75; margin:0 0 4px;">
+                        ${jp.content}
+                    </p>
+                    <p style="font-size:12px; color:#888780; line-height:1.5;
+                               font-style:italic; margin:0;">
+                        ${zh.content}
+                    </p>
+                </div>
+            </div>`;
+    }).join('');
+
+    const otherAdvice = advice
+        .split(/(?=【.*?】)/)
+        .filter(sec => !sec.includes('翻譯'))
+        .map(sec => {
+            const trimmed = sec.trim();
+            if (!trimmed) return '';
+            return `
+                <div style="margin-top:12px; padding-top:12px; border-top:0.5px solid #E2E8F0;">
+                    <div style="display:flex; align-items:center; gap:5px; margin-bottom:6px;">
+                        <span style="width:5px; height:5px; border-radius:50%;
+                                     background:#EF9F27; flex-shrink:0;"></span>
+                        <p style="font-size:11px; font-weight:700; color:#BA7517;
+                                   letter-spacing:0.08em; text-transform:uppercase; margin:0;">
+                            ${trimmed.match(/【.*?】/)?.[0] || ''}
+                        </p>
+                    </div>
+                    <div style="font-size:13px; color:#5F5E5A; line-height:1.8; padding-left:2px;">
+                        ${trimmed.replace(/【.*?】/, '').replace(/\n/g, '<br>')}
+                    </div>
+                </div>`;
+        }).join('');
+
+    return `
+        <div style="padding:8px 10px 0; border-top:0.5px solid #E2E8F0; margin-top:4px;">
+
+            <!-- 對話精解按鈕 -->
+            <button id="analysis-btn-${listenId}"
+                    onclick="window.quizToggleAnalysis('${listenId}')"
+                    style="display:flex; align-items:center; gap:6px; width:100%;
+                           padding:8px 12px; border-radius:8px; border:none;
+                           background:transparent; cursor:pointer; color:#888780;
+                           font-size:11px; font-weight:700; letter-spacing:0.08em;
+                           text-transform:uppercase; transition:background 0.15s;"
+                    onmouseover="this.style.background='#F8F6F3'"
+                    onmouseout="this.style.background='transparent'">
+                <i id="analysis-icon-${listenId}"
+                   class="fa-solid fa-chevron-down"
+                   style="font-size:10px; transition:transform 0.2s;"></i>
+                對話精解
+            </button>
+
+            <!-- 詳解內容 -->
+            <div id="analysis-${listenId}"
+                 style="display:none; margin:4px 0 10px;
+                        background:#FDF5F8; border-radius:10px;
+                        padding:14px; border:0.5px solid #F4C0D1;">
+
+                <p style="font-size:10px; font-weight:700; color:#B4B2A9;
+                           text-align:center; letter-spacing:0.2em;
+                           text-transform:uppercase; margin:0 0 14px;">
+                    Linguistic Alignment
+                </p>
+
+                ${alignedHtml}
+                ${otherAdvice}
+
             </div>
         </div>`;
 },

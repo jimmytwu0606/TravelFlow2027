@@ -35,6 +35,21 @@ export const audioManager = {
         }
     },
 
+/** 🎯 直接指定聲線播放，跳過角色識別 */
+async speakWithVoice(text, voiceId) {
+    if (!text || !voiceId) return;
+    window.JP_AUDIO_STOP_SIGNAL = false;
+    const rate = parseFloat(localStorage.getItem('tf_audio_rate') || '1.0');
+    const pitch = parseFloat(localStorage.getItem('tf_audio_pitch') || '0');
+    console.log(`🎯 [Direct-Voice] 直接對焦聲線: ${voiceId}`);
+    try {
+        const audioContent = await this._fetchSynthesizedAudio(text, voiceId, rate, pitch);
+        if (audioContent) await this._executePhysicalPlayback(audioContent);
+    } catch (err) {
+        console.error('❌ [speakWithVoice] 失敗:', err);
+    }
+},
+
 /** 🚀 [Executor] 物理執行端 (V2026.ULTRA 日文總線硬熔斷版) */
 _executePhysicalPlayback(base64) {
     // 💡 攔截 A：啟動前檢查總線旗幟
@@ -249,7 +264,8 @@ async speak(input, extActorA = null, extActorB = null) {
 
             // 💡 Identity Thread：物理切片識字並獲取模型
             // 此處回傳的 dna 應包含由 personaEngine._getRefinedAcoustic 合成的結果
-            const dna = this._getAcousticIdentity(String(rawText), actorA, actorB);
+            const role = seg.role || null;
+const dna = this._getAcousticIdentity(String(rawText), actorA, actorB, role);
             
             // 💡 Content Thread：真空洗滌 (移除「姓名：」前綴)
             const cleanContent = this._getCleanDialogue(String(rawText));
@@ -361,7 +377,28 @@ _prepareAcousticFuel(input, actorA, actorB) {
 
 
 /** 🧬 [Identity-Thread] 子函數 A：全量聲學對位器 (V2026.ULTRA.V2.2 性別強化版) */
-_getAcousticIdentity(rawText, actorA, actorB) {
+_getAcousticIdentity(rawText, actorA, actorB, role = null) {
+
+    // 🚀 0. role 直接對位（來自 _parseInputToDialogue 的結構化資料）
+    if (role) {
+        const isMan = (role === 'man' || role === 'male' || role === '男');
+        const allVoices = CONFIG.VOICE_LIST || [];
+        const malePool = allVoices.filter(v => v.gender === 'M').map(v => v.id);
+        const femalePool = allVoices.filter(v => v.gender === 'F').map(v => v.id);
+        const seed = rawText.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+        const targetPool = isMan ? malePool : femalePool;
+        const targetModel = targetPool.length > 0
+            ? targetPool[seed % targetPool.length]
+            : (isMan ? 'ja-JP-Chirp3-HD-Iapetus' : 'ja-JP-Chirp3-HD-Leda');
+        console.log(`🎭 [Role-Direct] role="${role}" | 性別: ${isMan ? '男' : '女'} | 模型: ${targetModel}`);
+        return {
+            voice: targetModel,
+            pitch: '0st',
+            rate: '1.0',
+            name: role
+        };
+    }
+
     // 🚀 1. 名字切片：支援全形/半形冒號，限前 20 字
     const separatorIndex = rawText.search(/[：:]/);
     let name = "";
@@ -372,7 +409,7 @@ _getAcousticIdentity(rawText, actorA, actorB) {
     }
 
     // 🛡️ 熔斷：無名狀態回歸系統預設
-    if (!name) return { voice: 'ja-JP-Neural2-B', pitch: '0st', rate: '1.0', name: '系統' };
+    if (!name) return { voice: 'ja-JP-Chirp3-HD-Iapetus', pitch: '0st', rate: '1.0', name: '系統' };
 
     // 🚀 2. CHARACTER_EGGS 靈魂優先導通（支援多種模糊匹配格式）
     const eggs = window.CHARACTER_EGGS || {};
@@ -419,25 +456,29 @@ _getAcousticIdentity(rawText, actorA, actorB) {
     const malePool = allVoices.filter(v => v.gender === 'M').map(v => v.id);
     const femalePool = allVoices.filter(v => v.gender === 'F').map(v => v.id);
 
-    // 🚀 5. 性別判定（強化女性漢字庫 + NAME_POOL 雙軌）
-    const femaleKanji = /[子美奈香恵愛理沙紀江優花梨桜麻彩菜里里悠葵澪凛莉加穂咲朱千夏妃姫妙幸雪柚鈴椿茜藍螢栞]/;
-    const maleKanji   = /[郎朗雄男武剛斗翔将太大樹勇海陸凌颯蒼士志功]{1}/;
+// 🚀 5. 性別判定（強化女性漢字庫 + NAME_POOL 雙軌）
+const femaleKanji = /[子美奈香恵愛理沙紀江優花梨桜麻彩菜里里悠葵澪凛莉加穂咲朱千夏妃姫妙幸雪柚鈴椿茜藍螢栞]/;
+const maleKanji   = /[郎朗雄男武剛斗翔将太大樹勇海陸凌颯蒼士志功]{1}/;
+const pool = window.NAME_POOL || [];
+const poolEntry = pool.find(e => name.includes(e[0]) || e[0].includes(name));
 
-    const pool = window.NAME_POOL || [];
-    const poolEntry = pool.find(e => name.includes(e[0]) || e[0].includes(name));
+let isMan;
 
-    let isMan;
-    if (poolEntry) {
-        isMan = poolEntry[1] === 'm';
-    } else if (femaleKanji.test(name)) {
-        isMan = false;
-    } else if (maleKanji.test(name)) {
-        isMan = true;
-    } else {
-        // 最終備援：名字最後一字音讀判定
-        const lastChar = name.slice(-1);
-        isMan = !femaleKanji.test(lastChar);
-    }
+// 最優先：直接角色標籤（男：/ 女：的前綴被切出來就是這兩個字）
+if (name === '男' || name === '男性') {
+    isMan = true;
+} else if (name === '女' || name === '女性') {
+    isMan = false;
+} else if (poolEntry) {
+    isMan = poolEntry[1] === 'm';
+} else if (femaleKanji.test(name)) {
+    isMan = false;
+} else if (maleKanji.test(name)) {
+    isMan = true;
+} else {
+    const lastChar = name.slice(-1);
+    isMan = !femaleKanji.test(lastChar);
+}
 
     // 🚀 6. 模型雜湊（同名永遠對到同一個聲音）
     const seed = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -724,33 +765,37 @@ _runRefineryEngine(content) {
 /** 📡 [Relay] 中繼站：API 通訊與主權釋放 (V2026.ULTRA.CHIRP_PURE_WELD) */
 async _fetchSynthesizedAudio(text, voiceId, rate, pitch) {
     const endpoint = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${this.apiKey}`;
-    
-    // 🚀 1. 數據純化：物理切除所有隱形 HTML/SSML 標籤
-    // 💡 職人診斷：Chirp3 模式下，input 必須鎖定為 'text' 而非 'ssml'
+
     const cleanText = String(text).replace(/<[^>]*>/g, "").trim();
     if (!cleanText) return null;
 
-    // 🚀 2. 聲學主權配置 (Voice Selection)
-    // 💡 確保 voiceId 是 Chirp3-HD 的真實 ID
-    const voiceConfig = { 
-        languageCode: 'ja-JP',
-        name: voiceId || localStorage.getItem('tf_voice_id') || 'ja-JP-Neural2-B'
+    // 🚀 2. 聲學主權配置：動態提取 languageCode，不寫死
+    const finalVoiceId = voiceId || localStorage.getItem('tf_voice_id') || 'ja-JP-Chirp3-HD-Iapetus';
+    const langParts = finalVoiceId.split('-');
+    const languageCode = `${langParts[0]}-${langParts[1]}`; // 'ja-JP' 或 'en-US'
+
+    const voiceConfig = {
+        languageCode: languageCode,
+        name: finalVoiceId
     };
 
-    // 🚀 3. 參數解耦協定 (Audio Config)
-    // 💡 Chirp3 建議語速維持 1.0 以發揮 Studio 品質，pitch 必須為 0.0
+    // 🚀 3. 參數解耦協定
+    // 💡 Chirp3-HD 建議 speakingRate 1.0，pitch 鎖定 0.0
+    const isChirp3 = finalVoiceId.includes('Chirp3');
     const audioConfig = {
         audioEncoding: 'MP3',
         speakingRate: Math.max(0.25, Math.min(parseFloat(rate) || 1.0, 4.0)),
-        pitch: 0.0 
+        pitch: isChirp3 ? 0.0 : (parseFloat(pitch) || 0.0)
     };
+
+    console.log(`🎙️ [TTS-Relay] Voice: ${finalVoiceId} | Rate: ${audioConfig.speakingRate} | Pitch: ${audioConfig.pitch}`);
 
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                input: { text: cleanText }, // 🎯 關鍵：改用純 text，封殺 SSML 400 衝突
+                input: { text: cleanText },
                 voice: voiceConfig,
                 audioConfig: audioConfig
             })
@@ -760,12 +805,12 @@ async _fetchSynthesizedAudio(text, voiceId, rate, pitch) {
 
         if (!response.ok) {
             const errorData = JSON.parse(rawResponse);
-            console.error(`🚨 [API-Blocked] Model: ${voiceConfig.name} | Status: ${response.status}`);
-            
-            // 衛星自癒：若模型失效，自動退回 Neural2 備援
-            if (rawResponse.includes("does not exist")) {
-                console.warn("🛰️ [Self-Healing] 模型偏移，執行備援導正...");
-                return await this._fetchSynthesizedAudio(cleanText, 'ja-JP-Neural2-B', rate, pitch);
+            console.error(`🚨 [API-Blocked] Model: ${finalVoiceId} | Status: ${response.status} | ${errorData.error?.message}`);
+
+            // 衛星自癒：模型不存在時退回 Chirp3-HD 預設
+            if (rawResponse.includes("does not exist") || rawResponse.includes("not found")) {
+                console.warn("🛰️ [Self-Healing] 模型偏移，退回 Chirp3-HD 預設...");
+                return await this._fetchSynthesizedAudio(cleanText, 'ja-JP-Chirp3-HD-Iapetus', rate, 0);
             }
             throw new Error(`TTS_FAIL: ${errorData.error?.message || "Unknown"}`);
         }
@@ -778,6 +823,7 @@ async _fetchSynthesizedAudio(text, voiceId, rate, pitch) {
         throw err;
     }
 },
+
 
 /** 🧬 物理工具：Base64 數據洗滌與 Blob 封裝 */
 _base64ToBlob(base64, type = 'audio/mp3') {

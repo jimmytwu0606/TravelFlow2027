@@ -427,4 +427,11 @@ rt {
     -webkit-overflow-scrolling: touch;
 }
 
+ruby rt {
+    font-size: 9.5px;
+    font-weight: 400;
+    color: #993556;
+    letter-spacing: 0.03em;
+}
+
 </style>
